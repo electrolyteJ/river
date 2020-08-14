@@ -1,59 +1,59 @@
 @file:JvmName("Server")
 package com.jamesfchen.river
 
+import android.net.LocalServerSocket
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import android.util.Log
-import okhttp3.*
-import okio.ByteString
-import java.util.concurrent.TimeUnit
-
-
-/**
- * Copyright ® $ 2020
- * All right reserved.
- *
- * @author: jf.chen
- * @email: jf.chen@Ctrip.com
- * @since: Aug/14/2020  Fri
- */
+import java.io.IOException
 
 const val TAG="jfc-server"
 fun main(args: Array<String>) {
-    val eagerClient = OkHttpClient.Builder()
-        .readTimeout(500, TimeUnit.MILLISECONDS)
-        .build()
-    val request = Request.Builder().url("ws://echo.websocket.org").build()
-//    val request = Request.Builder().url("ws://10.32.151.21:8765").build()
-    val newWebSocket = eagerClient.newWebSocket(request, object : WebSocketListener() {
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            super.onClosed(webSocket, code, reason)
-            Log.d(TAG, "onClosed")
-        }
-
-        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            super.onClosing(webSocket, code, reason)
-            Log.d(TAG, "onClosing")
-        }
-
-        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            super.onFailure(webSocket, t, response)
-            Log.d(TAG, "onFailure")
-        }
-
-        override fun onMessage(webSocket: WebSocket, text: String) {
-            super.onMessage(webSocket, text)
-            Log.d(TAG, "onMessage")
-        }
-
-        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-            super.onMessage(webSocket, bytes)
-            Log.d(TAG, "onMessage")
-        }
-
-        override fun onOpen(webSocket: WebSocket, response: Response) {
-            super.onOpen(webSocket, response)
-            Log.d(TAG, "onOpen")
-        }
-    })
-    newWebSocket.send("hahah")
-    eagerClient.dispatcher.executorService.shutdown();
+//    if (args.size == 0) {
+//        C.printHelp()
+//        return
+//    }
+//    var command = ""
+//    for (i in args.indices) {
+//        command = command + args[i] + " "
+//        Log.w(TAG, "command$command")
+//    }
+//    val cl = ClientConnect()
+//    cl.connect()
+//    cl.send(command)
+//    val result = cl.recv()
+//    println("java client recive:$result")
+//    cl.close()
+//    val localServerSocket =LocalServerSocket(SOCKET_NAME)
+//    try {
+//        videoSocket = localServerSocket.accept()
+//        // send one byte so the client may read() to detect a connection error
+//        videoSocket.outputStream.write(0)
+//        try {
+//           var  controlSocket = localServerSocket.accept()
+//        } catch (e: IOException) {
+//            videoSocket.close()
+//            throw e
+//        } catch (e: RuntimeException) {
+//            videoSocket.close()
+//            throw e
+//        }
+//    } finally {
+//        localServerSocket.close()
+//    }
+    Log.d(TAG, "main")
+    val connect = connect(SOCKET_NAME)
+    val inputStream = connect?.inputStream
+    while (true) {
+        val r: Int? = inputStream?.read()
+        Log.d(TAG, "read:$r")
+    }
+}
+private const val SOCKET_NAME = "jfc"
+lateinit var videoSocket: LocalSocket
+@Throws(IOException::class)
+fun connect(abstractName: String): LocalSocket? {
+    val localSocket = LocalSocket()
+    localSocket.connect(LocalSocketAddress(abstractName))
+    return localSocket
 }
