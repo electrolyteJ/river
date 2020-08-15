@@ -1,11 +1,15 @@
 @file:JvmName("Server")
 package com.jamesfchen.river
 
-import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.util.Log
+import com.blankj.utilcode.util.NetworkUtils
+import com.jamesfchen.river.C.ClientConnect
+import okio.internal.commonToUtf8String
+import java.io.BufferedReader
 import java.io.IOException
+import java.io.InputStreamReader
 
 const val TAG="jfc-server"
 fun main(args: Array<String>) {
@@ -41,15 +45,24 @@ fun main(args: Array<String>) {
 //    } finally {
 //        localServerSocket.close()
 //    }
-    Log.d(TAG, "main")
+    Log.d(TAG, "main:"+ NetworkUtils.getIPAddress(true))
     val connect = connect(SOCKET_NAME)
     val inputStream = connect?.inputStream
     while (true) {
-        val r: Int? = inputStream?.read()
-        Log.d(TAG, "read:$r")
+        var result: String? = null
+        try {
+            val br = BufferedReader(InputStreamReader(inputStream))
+            result = br.readLine()
+        } catch (e: IOException) {
+            e.printStackTrace()
+        } finally {
+            if (result.isNullOrEmpty()) continue
+            Log.d(TAG, "read:${result}")
+        }
+
     }
 }
-private const val SOCKET_NAME = "jfc"
+private const val SOCKET_NAME = "river"
 lateinit var videoSocket: LocalSocket
 @Throws(IOException::class)
 fun connect(abstractName: String): LocalSocket? {
