@@ -25,3 +25,15 @@ networking:
  reverse --remove REMOTE  remove specific reverse socket connection
  reverse --remove-all     remove all reverse socket connections from device
 ```
+
+## debug server
+```
+adb forward tcp:5005 tcp:5005
+
+In Android Studio, _Run_ > _Debug_ > _Edit configurations..._ On the left, click on
+`+`, _Remote_, and fill the form:
+
+ - Host: `localhost`
+ - Port: `5005`
+
+```
