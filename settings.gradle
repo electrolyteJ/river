@@ -1,3 +1,0 @@
-include ':pc-host-j'
-include ':server'
-rootProject.name = "river"
