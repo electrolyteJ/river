@@ -1,6 +1,9 @@
-import { WelcomePage } from './';
+import { WelcomePage, VideoPage } from './';
 
 export default {
   path: '',
-  childRoutes: [{ path: 'welcome-page', component: WelcomePage, isIndex: true }],
+  childRoutes: [
+    { path: 'video-page', component: VideoPage, isIndex: true },
+    { path: 'welcome-page', component: WelcomePage, isIndex: false }
+  ],
 };

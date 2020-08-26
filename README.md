@@ -37,3 +37,6 @@ In Android Studio, _Run_ > _Debug_ > _Edit configurations..._ On the left, click
  - Port: `5005`
 
 ```
+
+## stream server
+aiohttp sqlalchemy asyncio
