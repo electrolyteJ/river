@@ -38,5 +38,6 @@ In Android Studio, _Run_ > _Debug_ > _Edit configurations..._ On the left, click
 
 ```
 
+[hls](https://tools.ietf.org/html/rfc8216)
 ## stream server
 aiohttp sqlalchemy asyncio
