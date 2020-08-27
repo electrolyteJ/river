@@ -22,7 +22,7 @@ export default class VideoPage extends Component {
             <div className="box">
                 <div className="left-box">
                     {/* <Reflv
-                        url={'http://0.0.0.0:8000/av/demo.flv'}
+                        url={'http://127.0.0.1:7001/live/movie.flv'}
                         type="flv"
                         isLive
                         cors
@@ -49,7 +49,8 @@ export default class VideoPage extends Component {
             // poster: 'd2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.png',
             // src: '//d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8',
             // src: '//localhost:8080/playlists/2',
-            src: '//localhost:8081/live/movie.m3u8',
+            // src: '//localhost:8081/live/movie.m3u8',
+            src: 'http://127.0.0.1:7002/live/movie.m3u8',
             type: 'application/x-mpegURL',
         });
     }
