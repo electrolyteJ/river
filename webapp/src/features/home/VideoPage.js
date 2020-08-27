@@ -48,7 +48,8 @@ export default class VideoPage extends Component {
         this.player.src({
             // poster: 'd2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.png',
             // src: '//d2zihajmogu5jn.cloudfront.net/bipbop-advanced/bipbop_16x9_variant.m3u8',
-            src: '//localhost:8080/playlists/2',
+            // src: '//localhost:8080/playlists/2',
+            src: '//localhost:8081/live/movie.m3u8',
             type: 'application/x-mpegURL',
         });
     }
