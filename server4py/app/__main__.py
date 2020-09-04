@@ -1,15 +1,40 @@
-import pyrebase
-config = {
-    'apiKey': 'AIzaSyCgJOEsq12RhD9EOBBnR1VSZNSvCW1Sdtg',
-    'authDomain': 'spacecraft-22dc1.firebaseapp.com',
-    'databaseURL': 'https://spacecraft-22dc1.firebaseio.com',
-    'projectId': 'spacecraft-22dc1',
-    'storageBucket': 'spacecraft-22dc1.appspot.com',
-    'messagingSenderId': '28459008283',
-    'appId': "1:28459008283:web:809f4571433c65f9",
-    'measurementId': "G-83LV95LTW7"
-    }
-firebase = pyrebase.initialize_app(config)
-storage = firebase.storage()
-u = storage.child("/audio/1967.mp3").get_url('https://firebasestorage.googleapis.com/v0/b/spacecraft-22dc1.appspot.com/o/audio%2F1967.mp3?alt=media&token=ba945066-4714-4340-82a3-d26d4a22cb3b')
-print(u)
+
+import asyncio
+from aiohttp import web
+import subprocess
+
+
+async def handle_echo(reader, writer):
+    while True:
+        byte_buffer = await reader.read(1024)
+        if byte_buffer is None or len(byte_buffer) == 0:
+            continue
+        if hex(byte_buffer[0]) == 0x00  \
+                and hex(byte_buffer[1]) == 0x00\
+                and hex(byte_buffer[2]) == 0x00\
+                and hex(byte_buffer[3]) == 0x01:
+            print('start code')
+        # print("1")
+        # await asyncio.sleep(2)
+        # print(buffer)
+        # print("Received: %d" % b.hex())
+        # writer.write(data)
+        # await writer.drain()
+
+        # print("Close the connection")
+        # writer.close()
+
+
+async def main():
+    subprocess.run('adb reverse --remove-all', shell=True)
+    subprocess.run('adb reverse  localabstract:river tcp:27184', shell=True)
+    server = await asyncio.start_server(
+        handle_echo, '127.0.0.1', 27184)
+    print(f'{server.sockets}')
+    addr = server.sockets[0].getsockname()
+    print(f'Serving on {addr}')
+
+    async with server:
+        await server.serve_forever()
+
+asyncio.run(main())
