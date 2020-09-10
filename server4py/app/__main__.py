@@ -47,41 +47,27 @@ def read64be(buf):
     return (msb << 32) | lsb
 
 
-def byte_to_hexInt(v: int):
-    return int(hex(v))
-
-
-def byte_to_hexStr(v: int):
-    return hex(v)
-
-
 async def handle_echo(reader, writer):
     while True:
         meta_header_buffer = await reader.read(META_HEADER_SIZE)
         pts = int(read64be(meta_header_buffer))
         packet_size = int(read32be(meta_header_buffer[8:]))
+        byte_buffer = await reader.read(packet_size)
         # if pts == NO_PTS or (pts & 0x8000000000000000) == 0 or packet_size <= 0:
         #     continue
-        byte_buffer = await reader.read(packet_size)
         # print('cjf:', pts, packet_size)
-        # print('cjf:', hex(byte_buffer[0]), hex(byte_buffer[1]), hex(byte_buffer[2]), hex(byte_buffer[3]), hex(byte_buffer[4]))
-        if pts <= 0:
-            with open('cjf.txt', 'w') as f:
-                f.write(str(pts))
-                f.write('\t')
-                f.write(str(packet_size))
-                f.write('\n')
-                f.write(str(byte_buffer.hex()))
-                f.write('\n')
+        # if pts <= 0:
+        #     with open('cjf.txt', 'w') as f:
+        #         f.write(str(pts))
+        #         f.write('\t')
+        #         f.write(str(packet_size))
+        #         f.write('\n')
+        #         f.write(str(byte_buffer.hex()))
+        #         f.write('\n')
         if byte_buffer is None or len(byte_buffer) < 3:
             continue
-        print('c', type(hex(byte_buffer[0])))
-        if hex(byte_buffer[0]) == 0x0:
-            print('cadfa')
-        if hex(byte_buffer[0]) == 0x0 \
-                and hex(byte_buffer[1]) == 0x0\
-                and hex(byte_buffer[2]) == 0x0\
-                and hex(byte_buffer[3]) == 0x1:
+        if byte_buffer[0] == 0x0 and byte_buffer[1] == 0x0\
+                and byte_buffer[2] == 0x0 and byte_buffer[3] == 0x1:
             nalu_type = byte_buffer[4].hex() & 0x1f
             print('start code', nalu_type)
 
