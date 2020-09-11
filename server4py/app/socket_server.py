@@ -1,6 +1,24 @@
 # first of all import the socket library
 import socket
 import subprocess
+
+import time
+
+
+def read16be(buf):
+    return (buf[0] << 8) | buf[1]
+
+
+def read32be(buf):
+    return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]
+
+
+def read64be(buf):
+    msb = read32be(buf)
+    lsb = read32be(buf[4:])
+    return (msb << 32) | lsb
+
+
 subprocess.run('adb reverse --remove-all', shell=True)
 subprocess.run('adb reverse  localabstract:river tcp:27184', shell=True)
 # next create a socket object
@@ -29,14 +47,16 @@ print('Got connection from', addr)
 # a forever loop until we interrupt it or
 # an error occurs
 while True:
-
+    meta_header_buffer = c.recv(12)
+    print(meta_header_buffer.hex())
+    pts = read64be(meta_header_buffer)
+    packet_size = read32be(meta_header_buffer[8:])
+    print('cjf:', pts, packet_size)
+    # byte_buffer = c.recv(packet_size)
+    # print(hex(meta_header_buffer[0]), hex(meta_header_buffer[1]), hex(meta_header_buffer[2]), hex(meta_header_buffer[3]))
     # send a thank you message to the client.
     # c.send("Thank you for connecting".encode())
-    buffer = c.recv(1024)
-    if buffer is not None and len(buffer) > 0:
-        print(hex(buffer[0]), hex(buffer[1]), hex(buffer[2]), hex(buffer[3]))
-    else:
-        pass
     # Close the connection with the client
+    # time.sleep(2)
 
 c.close()
