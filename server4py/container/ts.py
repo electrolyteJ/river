@@ -1,3 +1,10 @@
+'''
+[MPEG-TS 格式解析](https://blog.csdn.net/Kayson12345/article/details/81266587)
+
+[MPEG2-TS基础](https://blog.csdn.net/rootusers/article/details/42772657)
+[MPEG-TS基础2](https://blog.csdn.net/rootusers/article/details/42970859)
+'''
+
 crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
     0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005,
