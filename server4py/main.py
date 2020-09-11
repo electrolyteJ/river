@@ -1,4 +1,5 @@
 
+from util import *
 import asyncio
 from aiohttp import web
 import subprocess
@@ -34,20 +35,6 @@ NO_PTS = -1
 
      It is followed by <packet_size> bytes containing the packet/frame.
 '''
-
-
-def read16be(buf):
-    return (buf[0] << 8) | buf[1]
-
-
-def read32be(buf):
-    return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]
-
-
-def read64be(buf):
-    msb = read32be(buf)
-    lsb = read32be(buf[4:])
-    return (msb << 32) | lsb
 
 
 async def handle_echo(reader, writer):

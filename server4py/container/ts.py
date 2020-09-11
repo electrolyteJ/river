@@ -5,6 +5,8 @@
 [MPEG-TS基础2](https://blog.csdn.net/rootusers/article/details/42970859)
 '''
 
+from util.data_type import uint32, byte
+
 crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
     0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005,
@@ -74,16 +76,15 @@ crcTable = [
 
 
 def genCrc32(buffer):
-    crc32 = 0xFFFFFFFF
-    print(crc32)
+    crc32 = uint32(0xffffffff)
     for i in range(0, len(buffer)):
         j = ((crc32 >> 24) ^ buffer[i]) & 0xFF
-        crc32 = (crc32 << 8) ^ crcTable[j]
-        print(i, j, (crc32 << 8), crcTable[j], crc32)
+        crc32 = uint32(uint32(crc32 << 8) ^ crcTable[j])
     return crc32
 
 
 TS_PACKET_SIZE = 188
+patCc = 0
 
 
 def pmt():
@@ -95,13 +96,10 @@ def pmt():
     # 0xe1，0x00：reserved=111(固定) PCR_PID=1 PCR(节目参考时钟)所在TS分组的PID，指定为视频PID
     pmt_header = bytes([0x02, 0xb0, 0xff, 0x00, 0x01, 0xc1, 0x00, 0x00, 0xe1, 0x00, 0xf0, 0x00])
 
-
-pmt = bytearray(TS_PACKET_SIZE)
-patCc = 0
+    pmt = bytearray([0xff for i in range(0, TS_PACKET_SIZE)])
 
 
 def pat():
-
     # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1 transport_priority=0 pid=0(PAT表的PID值固定为0)
     ts_header = bytearray([0x47, 0x40, 0x00, 0x10, 0x00])
     # 0xb0，0x0d：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定) section_length=1101(13)
@@ -110,28 +108,23 @@ def pat():
     pat_header = bytearray([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
     global patCc
     ts_header[3] |= (patCc if patCc <= 0xf else 0) & 0x0f
-    patCc = patCc+1
+    patCc = patCc + 1
 
-    remainByte = 0
-    pat = bytearray(TS_PACKET_SIZE)
+    pat = bytearray([0xff for i in range(0, TS_PACKET_SIZE)])
     ts_header_size = len(ts_header)
     pat_header_size = len(pat_header)
-    print('patCc:', patCc, ts_header_size, pat_header_size)
+
     for i in range(0, ts_header_size):
         pat[i] = ts_header[i]
     for i in range(0, pat_header_size):
-        pat[ts_header_size+i] = pat_header[i]
+        pat[ts_header_size + i] = pat_header[i]
     crc32Value = genCrc32(pat_header)
-    print('cjf', crc32Value)
     for i in range(0, 4):
-        bytes_size = 8*(3-i)
-        ret = crc32Value >> bytes_size
-        print(i+pat_header_size+ts_header_size, bytes_size, ret)
-        pat[i+pat_header_size+ts_header_size] = ret
+        bytes_size = 8 * (3 - i)
+        ret = byte(crc32Value >> bytes_size)
+        pat[i + pat_header_size + ts_header_size] = ret
 
-    # remainByte = int(TS_PACKET_SIZE - i)
-    # for j in range(0, remainByte):
-    #     pat[i+j] = 0xff
+    print('patCc:', patCc, len(pat))
     return pat
 
 
@@ -140,12 +133,20 @@ def muxer(buffer):
 
 
 if __name__ == "__main__":
+
     # patHeader = bytes([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
     # print(genCrc32(patHeader))
-    s = ''
-    for p in pat():
-        if len(s) == 0:
-            s = hex(p)
-        else:
-            s = s+','+hex(p)
-    print(s)
+
+    for i in range(0, 18):
+        ps=pat()
+        s = ''
+        for i in range(0, TS_PACKET_SIZE):
+            p = ps[i]
+            if len(s) == 0:
+                s = hex(p)
+            elif i == 5 or i == 17 or i == 21:
+                s = s + ',\n' + hex(p)
+            else:
+                s = s + ',' + hex(p)
+
+        print(s)
