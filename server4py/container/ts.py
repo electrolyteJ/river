@@ -7,7 +7,7 @@
 
 from util.data_type import uint32, byte
 
-crcTable = [
+__crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
     0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005,
     0x2608edb8, 0x22c9f00f, 0x2f8ad6d6, 0x2b4bcb61,
@@ -75,56 +75,119 @@ crcTable = [
 ]
 
 
-def genCrc32(buffer):
+def __genCrc32(value):
     crc32 = uint32(0xffffffff)
-    for i in range(0, len(buffer)):
-        j = ((crc32 >> 24) ^ buffer[i]) & 0xFF
-        crc32 = uint32(uint32(crc32 << 8) ^ crcTable[j])
+    for i in range(0, len(value)):
+        j = ((crc32 >> 24) ^ uint32(value[i])) & 0xFF
+        crc32 = uint32(uint32(crc32 << 8) ^ __crcTable[j])
+        # print(i,crc32)
     return crc32
 
 
-TS_PACKET_SIZE = 188
-patCc = 0
+__TS_PACKET_SIZE = 188
+__patCc = 0
+__pmtCc = 0
 
 
-def pmt():
+def copy(src: bytes, dest: bytearray, offset: int = 0):
+    src_size = len(src)
+    dest_size = len(dest)
+    if src_size > dest_size:
+        raise BaseException("dest size must be greater than src size")
+    for i in range(0, src_size):
+        dest[offset + i] = src[i]
+
+
+def pmt(has_video: bool):
     # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1 transport_priority=1(高优先级) pid=1
     # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域) continuity_counter=0000
-    ts_header = bytes([0x47, 0x50, 0x01, 0x10, 0x00])
-    # 0xb0，0xff：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定) section_length=11111111(255)
-    # 0x00,0x01:program_number=1 频道号码，表示当前的PMT关联到的频道，取值0x0001
-    # 0xe1，0x00：reserved=111(固定) PCR_PID=1 PCR(节目参考时钟)所在TS分组的PID，指定为视频PID
-    pmt_header = bytes([0x02, 0xb0, 0xff, 0x00, 0x01, 0xc1, 0x00, 0x00, 0xe1, 0x00, 0xf0, 0x00])
+    ts_header = bytearray([0x47, 0x50, 0x01, 0x10, 0x00])
+    global __pmtCc
+    if __pmtCc > 0xf:
+        __pmtCc = 0
+    ts_header[3] |= __pmtCc & 0x0f
+    __pmtCc = __pmtCc + 1
+    pmt_header = bytearray([0x02,
+                            # 0xb0，0xff：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
+                            # section_length=11111111(255)
+                            0xb0, 0xff,
+                            # 0x00,0x01:program_number=1 频道号码，表示当前的PMT关联到的频道，取值0x0001
+                            0x00, 0x01,
+                            0xc1, 0x00, 0x00,
+                            # 0xe1，0x00：reserved=111(固定) PCR_PID=256(10进制) PCR(节目参考时钟)所在TS分组的PID，指定为视频PID
+                            0xe1, 0x00,
+                            # 0xf0,0x00:reserved=1111(固定) program_info_length=0 节目描述信息，指定为0x000表示没有
+                            0xf0, 0x00])
+    if not has_video:
+        pmt_header[9] = 0x01  # PCR_PID 0xe1,0x01
+        prog_info = bytearray([0x0f, 0xe1, 0x01, 0xf0, 0x00])
+    else:
+        prog_info = bytearray([
+            # h264 or h265 *
+            # 0x1b:stream_type:h264
+            # 0xe1, 0x00： reserved=111(固定） elementary_PID=256
+            0x1b, 0xe1, 0x00, 0xf0, 0x00,
+            # mp3 or aac
+            # 0x0f:stream_type:aac
+            # 0xe1, 0x01： elementary_PID = 257
+            0x0f, 0xe1, 0x01, 0xf0, 0x00,
+        ])
+    pmt_header[2] = len(prog_info) + 9 + 4  # section_length
 
-    pmt = bytearray([0xff for i in range(0, TS_PACKET_SIZE)])
+    pmt = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
+    ts_header_size = len(ts_header)
+    pmt_header_size = len(pmt_header)
+    prog_info_size = len(prog_info)
+
+    copy(ts_header, pmt)
+    copy(pmt_header, pmt, ts_header_size)
+    copy(prog_info, pmt, ts_header_size + pmt_header_size)
+
+    crc32Value = __genCrc32(pmt[ts_header_size:ts_header_size + pmt_header_size + prog_info_size])
+    for i in range(0, 4):
+        bytes_size = 8 * (3 - i)
+        ret = byte(crc32Value >> bytes_size)
+        pmt[i + ts_header_size + pmt_header_size + prog_info_size] = ret
+    print('patCc:', __patCc, len(pmt))
+    return pmt
 
 
 def pat():
     # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1 transport_priority=0 pid=0(PAT表的PID值固定为0)
     ts_header = bytearray([0x47, 0x40, 0x00, 0x10, 0x00])
-    # 0xb0，0x0d：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定) section_length=1101(13)
-    # 0x00,0x01:program_number=1 节目号为0x0000时表示这是NIT，节目号为0x0001时,表示这是PMT
-    # 0xf0,0x01:reserved=11(固定) PID =1 节目号对应内容的PID值
-    pat_header = bytearray([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
-    global patCc
-    ts_header[3] |= (patCc if patCc <= 0xf else 0) & 0x0f
-    patCc = patCc + 1
 
-    pat = bytearray([0xff for i in range(0, TS_PACKET_SIZE)])
+    pat_header = bytearray([0x00,
+                            # 0xb0，0x0d：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
+                            # section_length=1101(13)
+                            0xb0, 0x0d,
+                            # 0x00, 0x01 ：transport_stream_id 传输流ID，固定为0x0001
+                            0x00, 0x01,
+                            0xc1, 0x00, 0x00,
+                            # 0x00,0x01:program_number=1 节目号为0x0000时表示这是NIT，节目号为0x0001时,表示这是PMT
+                            0x00, 0x01,
+                            # 0xf0,0x01:reserved=111(固定) PID =4097(10进制) 节目号对应内容的PID值
+                            0xf0, 0x01])
+    global __patCc
+    if __patCc > 0xf:
+        __patCc = 0
+    ts_header[3] |= __patCc & 0x0f
+    __patCc = __patCc + 1
+
+    pat = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
     ts_header_size = len(ts_header)
     pat_header_size = len(pat_header)
-
-    for i in range(0, ts_header_size):
-        pat[i] = ts_header[i]
-    for i in range(0, pat_header_size):
-        pat[ts_header_size + i] = pat_header[i]
-    crc32Value = genCrc32(pat_header)
+    copy(ts_header, pat)
+    copy(pat_header, pat, ts_header_size)
+    # for i in range(0, ts_header_size):
+    #     pat[i] = ts_header[i]
+    # for i in range(0, pat_header_size):
+    #     pat[ts_header_size + i] = pat_header[i]
+    crc32Value = __genCrc32(pat_header)
     for i in range(0, 4):
         bytes_size = 8 * (3 - i)
         ret = byte(crc32Value >> bytes_size)
         pat[i + pat_header_size + ts_header_size] = ret
-
-    print('patCc:', patCc, len(pat))
+    print('patCc:', __patCc, len(pat))
     return pat
 
 
@@ -137,14 +200,29 @@ if __name__ == "__main__":
     # patHeader = bytes([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
     # print(genCrc32(patHeader))
 
-    for i in range(0, 18):
-        ps=pat()
+    # for i in range(0, 4):
+    #     ps = pat()
+    #     s = ''
+    #     for i in range(0, __TS_PACKET_SIZE):
+    #         p = ps[i]
+    #         if len(s) == 0:
+    #             s = hex(p)
+    #         elif i == 5 or i == 17 or i == 21:
+    #             s = s + ',\n' + hex(p)
+    #         else:
+    #             s = s + ',' + hex(p)
+    #
+    #     print(s)
+    has_video = True
+    for i in range(0, 10):
+        ps = pmt(has_video)
         s = ''
-        for i in range(0, TS_PACKET_SIZE):
+        for i in range(0, __TS_PACKET_SIZE):
             p = ps[i]
+            line = (27 if has_video else 22)
             if len(s) == 0:
                 s = hex(p)
-            elif i == 5 or i == 17 or i == 21:
+            elif i == 5 or i == 17 or i == line or i == (line + 4):
                 s = s + ',\n' + hex(p)
             else:
                 s = s + ',' + hex(p)
