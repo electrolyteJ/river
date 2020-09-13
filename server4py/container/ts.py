@@ -1,8 +1,27 @@
 '''
-[MPEG-TS 格式解析](https://blog.csdn.net/Kayson12345/article/details/81266587)
+    [MPEG-TS 格式解析](https://blog.csdn.net/Kayson12345/article/details/81266587)
+    [MPEG2-TS基础](https://blog.csdn.net/rootusers/article/details/42772657)
+    [MPEG-TS基础2](https://blog.csdn.net/rootusers/article/details/42970859)
 
-[MPEG2-TS基础](https://blog.csdn.net/rootusers/article/details/42772657)
-[MPEG-TS基础2](https://blog.csdn.net/rootusers/article/details/42970859)
+[MPEG transport stream](https://en.wikipedia.org/wiki/MPEG_transport_stream)
+[Program-specific information(https://en.wikipedia.org/wiki/Program-specific_information)
+[Packetized elementary stream](https://en.wikipedia.org/wiki/Packetized_elementary_stream#:~:text=PES%20packet%20header,-Name&text=Specifies%20the%20number%20of%20bytes,Optional%20PES%20header)
+[HLS协议及TS封装](https://www.jianshu.com/p/d6311f03b81f)
+
+PAT packet                       PMT  packet              PES packet
+program_number=5            
+program_map_PID=10   ---->  TS header pid=10
+                            stream_type=0x0f audio
+                            elementary_PID=20  ---->  TS header pid=20
+                            stream_type=0x1b video
+                            elementary_PID=22 ---->   TS header pid=22
+
+program_number=6
+program_map_PID=11  ---->  TS header pid=11
+                            ....
+
+program_number=7    
+program_map_PID=12  ---->  ...
 '''
 
 from util.data_type import uint32, byte
@@ -85,8 +104,18 @@ def __genCrc32(value):
 
 
 __TS_PACKET_SIZE = 188
+__TS_PACKET_HEADER_SIZE = 4
+__TS_PACKET_PAYLOAD_SIZE = 184
+__H264_DEFAULT_HZ = 90
 __patCc = 0
 __pmtCc = 0
+__videoCc = 0
+__audioCc = 0
+__VIDEO_PID = 0x100
+__AUDIO_PID = 0x101
+__PAT_PID = 0x000
+__VIDEO_SID = 0xe0
+__AUDIO_SID = 0xc0
 
 
 def copy(src: bytes, dest: bytearray, offset: int = 0):
@@ -95,13 +124,26 @@ def copy(src: bytes, dest: bytearray, offset: int = 0):
     if src_size > dest_size:
         raise BaseException("dest size must be greater than src size")
     for i in range(0, src_size):
+        if offset + i >= dest_size:
+            break
         dest[offset + i] = src[i]
 
 
-def pmt(has_video: bool):
-    # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1 transport_priority=1(高优先级) pid=1
-    # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域) continuity_counter=0000
-    ts_header = bytearray([0x47, 0x50, 0x01, 0x10, 0x00])
+def pmt_packet(has_video: bool) -> bytes:
+    '''
+
+    :param has_video:
+    :return:
+    '''
+    ts_header = bytearray([0x47,
+                           # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1
+                           # transport_priority=1(高优先级) pid=4097
+                           0x50, 0x01,
+                           # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域)
+                           # continuity_counter=0000
+                           0x10,
+                           # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+                           0x00])
     global __pmtCc
     if __pmtCc > 0xf:
         __pmtCc = 0
@@ -132,7 +174,7 @@ def pmt(has_video: bool):
             # 0xe1, 0x01： elementary_PID = 257
             0x0f, 0xe1, 0x01, 0xf0, 0x00,
         ])
-    pmt_header[2] = len(prog_info) + 9 + 4  # section_length
+    pmt_header[2] = len(prog_info) + 9 + 4  # section_length：表示从下一个字段开始到CRC32(含)之间有用的字节数
 
     pmt = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
     ts_header_size = len(ts_header)
@@ -148,13 +190,20 @@ def pmt(has_video: bool):
         bytes_size = 8 * (3 - i)
         ret = byte(crc32Value >> bytes_size)
         pmt[i + ts_header_size + pmt_header_size + prog_info_size] = ret
-    print('patCc:', __patCc, len(pmt))
+    # print('patCc:', __patCc, len(pmt))
     return pmt
 
 
-def pat():
-    # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1 transport_priority=0 pid=0(PAT表的PID值固定为0)
-    ts_header = bytearray([0x47, 0x40, 0x00, 0x10, 0x00])
+def pat_packet() -> bytes:
+    ts_header = bytearray([0x47,
+                           # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1
+                           # transport_priority=0 pid=0(PAT表的PID值固定为0)
+                           0x40, 0x00,
+                           # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域)
+                           # continuity_counter=0000
+                           0x10,
+                           # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+                           0x00])
 
     pat_header = bytearray([0x00,
                             # 0xb0，0x0d：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
@@ -187,17 +236,179 @@ def pat():
         bytes_size = 8 * (3 - i)
         ret = byte(crc32Value >> bytes_size)
         pat[i + pat_header_size + ts_header_size] = ret
-    print('patCc:', __patCc, len(pat))
+    # print('patCc:', __patCc, len(pat))
     return pat
 
 
-def muxer(buffer):
-    pass
+def adaptaionbuf_init(src, occupy_bytes, remainBytes):
+    src[occupy_bytes] = remainBytes - 1
+    if remainBytes > 1:
+        src[1 + occupy_bytes] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+        for i in range(2 + occupy_bytes, len(src)):
+            src[i] = 0xff
+
+
+def write_pts_or_dts(buffer, value, flag):
+    start = len(buffer)
+    if value > 0x1ffffffff:
+        value -= 0x1ffffffff
+    n = uint32(flag << 4) | ((uint32(value >> 30) & 0x07) << 1) | 1
+    buffer.insert(start, byte(n))
+    n = ((uint32(value >> 15) & 0x7fff) << 1) | 1
+    buffer.insert(start + 1, byte(n >> 8))
+    buffer.insert(start + 2, byte(n))
+    n = (uint32(value & 0x7fff) << 1) | 1
+    buffer.insert(start + 3, byte(n >> 8))
+    buffer.insert(start + 4, byte(n))
+
+
+def gen_pes_header(payload_size: int, is_video, pts, dts):
+    pes_header = bytearray([0x00, 0x00, 0x01])
+    pes_header.insert(3, __AUDIO_SID if not is_video else __VIDEO_SID)
+    pts_size = 5  # pts 5 bytes
+    dts_size = 5
+    remain_header_size = pts_size
+    flag = 0x80  # 0x80表示只含有pt
+    if is_video and pts != dts:
+        flag |= 0x40  # 取值0xc0表示含有pts和dts
+        remain_header_size = pts_size + dts_size
+
+    remain_packet_size = payload_size + remain_header_size + 3
+    if remain_packet_size > 0xffff:
+        remain_packet_size = 0
+    pes_header.insert(4, byte(remain_packet_size >> 8))
+    pes_header.insert(5, byte(remain_packet_size))
+    pes_header.insert(6, 0x80)
+    pes_header.insert(7, flag)
+    pes_header.insert(8, remain_header_size)
+    # pts and dts
+    write_pts_or_dts(pes_header, pts, flag >> 6)
+    if is_video and pts != dts:
+        write_pts_or_dts(pes_header, dts, 1)
+    return len(pes_header), pes_header
+
+
+def pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, bytes):
+    def __print_ts_packet(ts_packet):
+        s = ''
+        adaptation_field_control = 0x01
+        adaptation_field_length = 0
+        payload_unit_start_indicator = 0
+        for jj in range(0, __TS_PACKET_SIZE):
+            p = ts_packet[jj]
+            if jj == 1:
+                payload_unit_start_indicator = p >> 6 & 0b01
+                print("payload_unit_start_indicator", bin(payload_unit_start_indicator))
+            elif jj == 3:
+                adaptation_field_control = (p >> 4) & 0b0011
+                print('adaptation_field_control', bin(adaptation_field_control))
+            if jj == 4 and adaptation_field_control & 0b10 == 0b10:
+                adaptation_field_length = p
+                print('adaptation_field_length', adaptation_field_length)
+
+            if len(s) == 0:
+                s = hex(p)
+            elif jj == 4:
+                s = s + ',\n' + hex(p)
+            elif adaptation_field_control & 0b10 == 0b10 and adaptation_field_length + 4 == jj:
+                s = s + ',\n' + hex(p)
+            elif payload_unit_start_indicator == 1 and jj == adaptation_field_length + 5:
+                s = s + ',\n\u001B[31mpes header:\u001B[0m' + hex(p)
+            elif payload_unit_start_indicator == 1 and jj == adaptation_field_length + 5 + 19:
+                s = s + ',\n\u001B[31mpes payload:\u001B[0m' + hex(p)
+            else:
+                s = s + ',' + hex(p)
+
+        print(s)
+
+    ts_packet = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
+    is_first_packet = True
+    pes_payload_size = len(buffer)  # es size == pes_payload_size
+    pes_header_size, pes_header = gen_pes_header(pes_payload_size, is_video, pts, dts)
+    pes_packet_size = pes_header_size + pes_payload_size
+    print('pes_packet_size', pes_packet_size)
+    i = 0
+    # data_block_size = 0
+    # for loop split one pes(one frame) into ts blocks
+    while i < pes_payload_size:
+        print("=" * 20)
+        print('index', i)
+        pid = __AUDIO_PID
+        if is_video:
+            pid = __VIDEO_PID
+        # ts header
+        ts_packet[0] = 0x47  # sync byte
+        ts_packet[1] = byte(pid >> 8)  # pid high 5 bits
+        if is_first_packet:
+            # unit start indicator 负载单元起始标示符，一个完整的数据包开始时标记为1
+            ts_packet[1] = 0x40 | ts_packet[1]
+        ts_packet[2] = byte(pid)  # pid low 8 bits
+        global __videoCc, __audioCc
+        if is_video:
+            __videoCc = __videoCc + 1
+            if __videoCc > 0xf:
+                __videoCc = 0
+            ts_packet[3] = 0x10 | __videoCc & 0x0f
+        else:
+            __audioCc = __audioCc + 1
+            if __audioCc > 0xf:
+                __audioCc = 0
+            ts_packet[3] = 0x10 | __audioCc & 0x0f
+        ts_packet_index = 4
+        adaptation_field_size = 0
+
+        # adaptation_field
+        if is_first_packet and is_video and is_keyframe:
+            # first packet,关键帧需要加pcr
+            ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
+            ts_packet[4] = 7
+            ts_packet[5] = 0x50
+            pcr = dts
+            ts_packet[6] = byte(pcr >> 25)
+            ts_packet[7] = byte((pcr >> 17) & 0xff)
+            ts_packet[8] = byte((pcr >> 9) & 0xff)
+            ts_packet[9] = byte((pcr >> 1) & 0xff)
+            ts_packet[10] = byte(((pcr & 0x1) << 7) | 0x7e)
+            ts_packet[11] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+            ts_packet_index = 12
+            adaptation_field_size = 8
+
+        should_fill_0xff_size = __TS_PACKET_SIZE - (ts_packet_index + pes_packet_size)
+        # fill 0xff
+        if should_fill_0xff_size > 0:
+            ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
+            # adaptation field
+            ts_packet[ts_packet_index] = byte(should_fill_0xff_size - 1)
+            if should_fill_0xff_size != 1:
+                ts_packet[ts_packet_index + 1] = 0x00
+            ts_packet_index += should_fill_0xff_size
+        print("ts size:%d\tadaptation_field_size:%d\tfill 0xff size:%d\tpes_header_size:%d " % (__TS_PACKET_HEADER_SIZE,
+                                                                                                adaptation_field_size,
+                                                                                                should_fill_0xff_size,
+                                                                                                pes_header_size))
+        print('continuity_counter %d pid 0x%x' % (ts_packet[3] & 0x0f,
+                                                  ((ts_packet[1] & 0b00011111) << 8) | ts_packet[2]
+                                                  ))
+        # pes header 放在第一个包中
+        if is_first_packet and ts_packet_index < __TS_PACKET_SIZE and pes_header_size > 0:
+            copy(pes_header, ts_packet, ts_packet_index)
+            ts_packet_index += pes_header_size
+            pes_packet_size -= pes_header_size
+        print("ts_packet_index", ts_packet_index)
+        if ts_packet_index < __TS_PACKET_SIZE:
+            data_block_size = __TS_PACKET_SIZE - ts_packet_index
+            copy(buffer[i:i + data_block_size], ts_packet, ts_packet_index)
+            pes_packet_size -= data_block_size
+            i += data_block_size
+
+        __print_ts_packet(ts_packet)
+        is_first_packet = False
+
+    return len(ts_packet), ts_packet
 
 
 if __name__ == "__main__":
-
-    # patHeader = bytes([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
+    patHeader = bytearray([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
     # print(genCrc32(patHeader))
 
     # for i in range(0, 4):
@@ -213,18 +424,19 @@ if __name__ == "__main__":
     #             s = s + ',' + hex(p)
     #
     #     print(s)
-    has_video = True
-    for i in range(0, 10):
-        ps = pmt(has_video)
-        s = ''
-        for i in range(0, __TS_PACKET_SIZE):
-            p = ps[i]
-            line = (27 if has_video else 22)
-            if len(s) == 0:
-                s = hex(p)
-            elif i == 5 or i == 17 or i == line or i == (line + 4):
-                s = s + ',\n' + hex(p)
-            else:
-                s = s + ',' + hex(p)
-
-        print(s)
+    # has_video = True
+    # for i in range(0, 10):
+    #     ps = pmt_packet(has_video)
+    #     s = ''
+    #     for i in range(0, __TS_PACKET_SIZE):
+    #         p = ps[i]
+    #         line = (27 if has_video else 22)
+    #         if len(s) == 0:
+    #             s = hex(p)
+    #         elif i == 5 or i == 17 or i == line or i == (line + 4):
+    #             s = s + ',\n' + hex(p)
+    #         else:
+    #             s = s + ',' + hex(p)
+    #
+    #     print(s)
+    pass

@@ -1,4 +1,3 @@
-
 from util import *
 import asyncio
 from aiohttp import web
@@ -52,16 +51,23 @@ async def handle_echo(reader, writer):
             continue
         sc = byte_buffer[:START_CODE_SIZE]
         nalu_header = byte_buffer[START_CODE_SIZE]
-        nalu_payload_buffer = byte_buffer[START_CODE_SIZE+1:]
+        nalu_payload_buffer = byte_buffer[START_CODE_SIZE + 1:]
         # if pts == NO_PTS or (pts & 0x8000000000000000) == 0 or packet_size <= 0:
         #     continue
-        # print('cjf pts/packet_size:', pts, packet_size)
+        print('cjf pts/packet_size:', pts, packet_size)
+        s = ''
+        for i in range(0, len(byte_buffer)):
+            p = byte_buffer[i]
+            if len(s) == 0:
+                s = hex(p)
+            else:
+                s = s + ',' + hex(p)
         with open('cjf.txt', 'a') as f:
             f.write(str(pts))
             f.write('\t')
             f.write(str(packet_size))
             f.write('\n')
-            f.write(str(byte_buffer.hex()))
+            f.write(s)
             f.write('\n')
         if sc == start_code:
             nalu_type = nalu_header & 0x1f
@@ -99,4 +105,6 @@ async def main():
     async with server:
         await server.serve_forever()
 
-asyncio.run(main())
+
+if __name__ == '__main__':
+    asyncio.run(main())
