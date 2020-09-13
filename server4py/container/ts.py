@@ -288,40 +288,11 @@ def gen_pes_header(payload_size: int, is_video, pts, dts):
     return len(pes_header), pes_header
 
 
-def pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, bytes):
-    def __print_ts_packet(ts_packet):
-        s = ''
-        adaptation_field_control = 0x01
-        adaptation_field_length = 0
-        payload_unit_start_indicator = 0
-        for jj in range(0, __TS_PACKET_SIZE):
-            p = ts_packet[jj]
-            if jj == 1:
-                payload_unit_start_indicator = p >> 6 & 0b01
-                print("payload_unit_start_indicator", bin(payload_unit_start_indicator))
-            elif jj == 3:
-                adaptation_field_control = (p >> 4) & 0b0011
-                print('adaptation_field_control', bin(adaptation_field_control))
-            if jj == 4 and adaptation_field_control & 0b10 == 0b10:
-                adaptation_field_length = p
-                print('adaptation_field_length', adaptation_field_length)
-
-            if len(s) == 0:
-                s = hex(p)
-            elif jj == 4:
-                s = s + ',\n' + hex(p)
-            elif adaptation_field_control & 0b10 == 0b10 and adaptation_field_length + 4 == jj:
-                s = s + ',\n' + hex(p)
-            elif payload_unit_start_indicator == 1 and jj == adaptation_field_length + 5:
-                s = s + ',\n\u001B[31mpes header:\u001B[0m' + hex(p)
-            elif payload_unit_start_indicator == 1 and jj == adaptation_field_length + 5 + 19:
-                s = s + ',\n\u001B[31mpes payload:\u001B[0m' + hex(p)
-            else:
-                s = s + ',' + hex(p)
-
-        print(s)
+from container import print_ts_packet
 
 
+def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list):
+    ts_packets = list()
     is_first_packet = True
     pes_payload_size = len(buffer)  # es size == pes_payload_size
     pes_header_size, pes_header = gen_pes_header(pes_payload_size, is_video, pts, dts)
@@ -332,8 +303,7 @@ def pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, bytes):
     # for loop split one pes(one frame) into ts blocks
     while i < pes_payload_size:
         ts_packet = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
-        print("=" * 20)
-        print('index', i)
+
         pid = __AUDIO_PID
         if is_video:
             pid = __VIDEO_PID
@@ -383,29 +353,30 @@ def pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, bytes):
             if should_fill_0xff_size != 1:
                 ts_packet[ts_packet_index + 1] = 0x00
             ts_packet_index += should_fill_0xff_size
-        print("ts size:%d\tadaptation_field_size:%d\tfill 0xff size:%d\tpes_header_size:%d " % (__TS_PACKET_HEADER_SIZE,
-                                                                                                adaptation_field_size,
-                                                                                                should_fill_0xff_size,
-                                                                                                pes_header_size))
-        print('continuity_counter %d pid 0x%x' % (ts_packet[3] & 0x0f,
-                                                  ((ts_packet[1] & 0b00011111) << 8) | ts_packet[2]
-                                                  ))
+        # print("ts size:%d\tadaptation_field_size:%d\tfill 0xff size:%d\tpes_header_size:%d " % (__TS_PACKET_HEADER_SIZE,
+        #                                                                                         adaptation_field_size,
+        #                                                                                         should_fill_0xff_size,
+        #                                                                                         pes_header_size))
+        # print('continuity_counter %d pid 0x%x' % (ts_packet[3] & 0x0f,
+        #                                           ((ts_packet[1] & 0b00011111) << 8) | ts_packet[2]
+        #                                           ))
         # pes header 放在第一个包中
         if is_first_packet and ts_packet_index < __TS_PACKET_SIZE and pes_header_size > 0:
             copy(pes_header, ts_packet, ts_packet_index)
             ts_packet_index += pes_header_size
             pes_packet_size -= pes_header_size
-        print("ts_packet_index", ts_packet_index)
+        # print("ts_packet_index", ts_packet_index)
         if ts_packet_index < __TS_PACKET_SIZE:
             data_block_size = __TS_PACKET_SIZE - ts_packet_index
             copy(buffer[i:i + data_block_size], ts_packet, ts_packet_index)
             pes_packet_size -= data_block_size
             i += data_block_size
 
-        __print_ts_packet(ts_packet)
+        # __print_ts_packet(ts_packet)
+        ts_packets.append(ts_packet)
         is_first_packet = False
 
-    return len(ts_packet), ts_packet
+    return len(ts_packets), ts_packets
 
 
 if __name__ == "__main__":

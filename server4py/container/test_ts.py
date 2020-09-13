@@ -1,6 +1,7 @@
 from unittest import TestCase
-from container.ts import pes_packet
+from container.ts import ts_pes_packet
 from container import datas
+from container import print_ts_packet
 
 
 class TestTS_all(TestCase):
@@ -68,18 +69,10 @@ class TestTS_all(TestCase):
         __TS_PACKET_SIZE = 188
         is_video = True
         is_keyframe = True
-        a, ts_packet = pes_packet(datas.data0['es'], is_video, is_keyframe, datas.data0['pts'], 1)
-        # s = ''
-        # for i in range(0, __TS_PACKET_SIZE):
-        #     p = ts_packet[i]
-        #     if len(s) == 0:
-        #         s = hex(p)
-        #     elif i == 4 or i == 12:
-        #         s = s + ',\n' + hex(p)
-        #     else:
-        #         s = s + ',' + hex(p)
-        # print("=" * 20)
-        # print(a, s)
-        # for i in range(0, a):
-        #     print(i, hex(ts_packet[i]))
-        #     self.assertEqual(expected_ret[i], ts_packet[i])
+        d = datas.data2
+        ts_packets_size, ts_packets = ts_pes_packet(d['es'], is_video, is_keyframe, d['pts'], 1)
+        for i in range(0, len(ts_packets)):
+            p = ts_packets[i]
+            print("=" * 20)
+            print('index', i)
+            print_ts_packet(p)
