@@ -321,7 +321,7 @@ def pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, bytes):
 
         print(s)
 
-    ts_packet = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
+
     is_first_packet = True
     pes_payload_size = len(buffer)  # es size == pes_payload_size
     pes_header_size, pes_header = gen_pes_header(pes_payload_size, is_video, pts, dts)
@@ -331,6 +331,7 @@ def pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, bytes):
     # data_block_size = 0
     # for loop split one pes(one frame) into ts blocks
     while i < pes_payload_size:
+        ts_packet = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
         print("=" * 20)
         print('index', i)
         pid = __AUDIO_PID
