@@ -65,6 +65,21 @@ def print_ts_packet(ts_packet):
     print(s)
 
 
+
+def write_to_fd(fd):
+    pass
+
+
+# def write_to_file(path: str, es: bytes):
+#     with open(path, 'wb') as f:
+#         ts_packets_size, ts_packets = ts_pes_packet(es, is_video, is_keyframe, pts, pts - 20)
+#         f.write(pat_packet())
+#         # f.write('\n')
+#         f.write(pmt_packet(is_video))
+#         for ts_packet in ts_packets:
+#             # f.write('\n')
+#             f.write(ts_packet)
+
 def main():
     muxer = Muxer('xxx.mp3', OutputFormat.TS)
     muxer.start()

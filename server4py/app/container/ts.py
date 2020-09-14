@@ -23,12 +23,13 @@ program_map_PID=11  ---->  TS header pid=11
 program_number=7    
 program_map_PID=12  ---->  ...
 
-
-
 psi/si
+psi: pat pmt
+
 '''
 
-from util.data_type import uint32, byte
+from app.data_type_ext import uint32, byte
+from app.byte_ext import copy
 
 __crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
@@ -122,17 +123,6 @@ __VIDEO_SID = 0xe0
 __AUDIO_SID = 0xc0
 
 
-def copy(src: bytes, dest: bytearray, offset: int = 0):
-    src_size = len(src)
-    dest_size = len(dest)
-    if src_size > dest_size:
-        raise BaseException("dest size must be greater than src size")
-    for i in range(0, src_size):
-        if offset + i >= dest_size:
-            break
-        dest[offset + i] = src[i]
-
-
 def pmt_packet(has_video: bool) -> bytes:
     '''
 
@@ -200,10 +190,6 @@ def pmt_packet(has_video: bool) -> bytes:
 
 
 def pat_packet() -> bytes:
-    '''
-    max 65526Byte
-    :return:
-    '''
     ts_header = bytearray([0x47,
                            # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1
                            # transport_priority=0 pid=0(PAT表的PID值固定为0)
@@ -241,7 +227,7 @@ def pat_packet() -> bytes:
     # for i in range(0, pat_header_size):
     #     pat[ts_header_size + i] = pat_header[i]
     crc32Value = __genCrc32(pat_header)
-    #4bytes的crc32 ,验证ts包的完整性
+    # 4bytes的crc32 ,验证ts包的完整性
     for i in range(0, 4):
         bytes_size = 8 * (3 - i)
         ret = byte(crc32Value >> bytes_size)
@@ -250,15 +236,7 @@ def pat_packet() -> bytes:
     return pat
 
 
-def adaptaionbuf_init(src, occupy_bytes, remainBytes):
-    src[occupy_bytes] = remainBytes - 1
-    if remainBytes > 1:
-        src[1 + occupy_bytes] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
-        for i in range(2 + occupy_bytes, len(src)):
-            src[i] = 0xff
-
-
-def write_pts_or_dts(buffer, value, flag):
+def __write_pts_or_dts(buffer, value, flag):
     start = len(buffer)
     if value > 0x1ffffffff:
         value -= 0x1ffffffff
@@ -272,7 +250,7 @@ def write_pts_or_dts(buffer, value, flag):
     buffer.insert(start + 4, byte(n))
 
 
-def gen_pes_header(payload_size: int, is_video, pts, dts):
+def __gen_pes_header(payload_size: int, is_video, pts, dts):
     pes_header = bytearray([0x00, 0x00, 0x01])
     pes_header.insert(3, __AUDIO_SID if not is_video else __VIDEO_SID)
     pts_size = 5  # pts 5 bytes
@@ -292,22 +270,25 @@ def gen_pes_header(payload_size: int, is_video, pts, dts):
     pes_header.insert(7, flag)
     pes_header.insert(8, remain_header_size)
     # pts and dts
-    write_pts_or_dts(pes_header, pts, flag >> 6)
+    __write_pts_or_dts(pes_header, pts, flag >> 6)
     if is_video and pts != dts:
-        write_pts_or_dts(pes_header, dts, 1)
+        __write_pts_or_dts(pes_header, dts, 1)
     return len(pes_header), pes_header
 
 
-from container import print_ts_packet
-
-
 def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list):
+    '''
+     buffer :max 65526Byte
+     :return:
+     '''
     ts_packets = list()
     is_first_packet = True
     pes_payload_size = len(buffer)  # es size == pes_payload_size
-    pes_header_size, pes_header = gen_pes_header(pes_payload_size, is_video, pts, dts)
+    pes_header_size, pes_header = __gen_pes_header(pes_payload_size, is_video, pts, dts)
     pes_packet_size = pes_header_size + pes_payload_size
     print('pes_packet_size', pes_packet_size)
+    if pes_packet_size > 65526:
+        buffer = buffer[0:65526]
     i = 0
     # data_block_size = 0
     # for loop split one pes(one frame) into ts blocks
@@ -336,7 +317,7 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
                 __audioCc = 0
             ts_packet[3] = 0x10 | __audioCc & 0x0f
         ts_packet_index = 4
-        adaptation_field_size = 0
+        # adaptation_field_size = 0
 
         # adaptation_field
         if is_first_packet and is_video and is_keyframe:
@@ -352,7 +333,7 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
             ts_packet[10] = byte(((pcr & 0x1) << 7) | 0x7e)
             ts_packet[11] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
             ts_packet_index = 12
-            adaptation_field_size = 8
+            # adaptation_field_size = 8
 
         should_fill_0xff_size = __TS_PACKET_SIZE - (ts_packet_index + pes_packet_size)
         # fill 0xff
@@ -387,38 +368,3 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
         is_first_packet = False
 
     return len(ts_packets), ts_packets
-
-
-if __name__ == "__main__":
-    patHeader = bytearray([0x00, 0xb0, 0x0d, 0x00, 0x01, 0xc1, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x01])
-    # print(genCrc32(patHeader))
-
-    # for i in range(0, 4):
-    #     ps = pat()
-    #     s = ''
-    #     for i in range(0, __TS_PACKET_SIZE):
-    #         p = ps[i]
-    #         if len(s) == 0:
-    #             s = hex(p)
-    #         elif i == 5 or i == 17 or i == 21:
-    #             s = s + ',\n' + hex(p)
-    #         else:
-    #             s = s + ',' + hex(p)
-    #
-    #     print(s)
-    # has_video = True
-    # for i in range(0, 10):
-    #     ps = pmt_packet(has_video)
-    #     s = ''
-    #     for i in range(0, __TS_PACKET_SIZE):
-    #         p = ps[i]
-    #         line = (27 if has_video else 22)
-    #         if len(s) == 0:
-    #             s = hex(p)
-    #         elif i == 5 or i == 17 or i == line or i == (line + 4):
-    #             s = s + ',\n' + hex(p)
-    #         else:
-    #             s = s + ',' + hex(p)
-    #
-    #     print(s)
-    pass

@@ -1,21 +1,7 @@
-from util import *
 import asyncio
-from aiohttp import web
 import subprocess
-from codec.h264 import NaluType
-
-
-class Packet:
-    # isAudio -> bool
-    # isVideo -> bool
-    # IsMetadata bool
-    # TimeStamp  uint32 // dts
-    # StreamID   uint32
-    # Header     PacketHeader
-    flags = 0
-    pts = -1
-    datas = []
-
+from app.codec.h264 import NaluType
+from app.byte_ext import read64be, read32be
 
 META_HEADER_SIZE = 12
 NALU_BYTES_SIZE = 4
