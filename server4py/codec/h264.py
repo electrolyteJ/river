@@ -33,7 +33,7 @@ class NaluType(Enum):
     SLICE_PA = 2
     SLICE_PB = 3
     SLICE_PC = 4
-    SLICE_IDR = 5
+    SLICE_IDR = 5  # 关键帧 keyframe
     SEI = 6
     SPS = 7
     PPS = 8

@@ -22,6 +22,10 @@ program_map_PID=11  ---->  TS header pid=11
 
 program_number=7    
 program_map_PID=12  ---->  ...
+
+
+
+psi/si
 '''
 
 from util.data_type import uint32, byte
@@ -169,7 +173,8 @@ def pmt_packet(has_video: bool) -> bytes:
             # 0x1b:stream_type:h264
             # 0xe1, 0x00： reserved=111(固定） elementary_PID=256
             0x1b, 0xe1, 0x00, 0xf0, 0x00,
-            # mp3 or aac
+            # 0x03:mp3
+            # aac
             # 0x0f:stream_type:aac
             # 0xe1, 0x01： elementary_PID = 257
             0x0f, 0xe1, 0x01, 0xf0, 0x00,
@@ -195,6 +200,10 @@ def pmt_packet(has_video: bool) -> bytes:
 
 
 def pat_packet() -> bytes:
+    '''
+    max 65526Byte
+    :return:
+    '''
     ts_header = bytearray([0x47,
                            # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1
                            # transport_priority=0 pid=0(PAT表的PID值固定为0)
@@ -214,7 +223,7 @@ def pat_packet() -> bytes:
                             0xc1, 0x00, 0x00,
                             # 0x00,0x01:program_number=1 节目号为0x0000时表示这是NIT，节目号为0x0001时,表示这是PMT
                             0x00, 0x01,
-                            # 0xf0,0x01:reserved=111(固定) PID =4097(10进制) 节目号对应内容的PID值
+                            # 0xf0,0x01:reserved=111(固定) PMT_PID =4097(10进制) 节目号对应内容的PID值
                             0xf0, 0x01])
     global __patCc
     if __patCc > 0xf:
@@ -232,6 +241,7 @@ def pat_packet() -> bytes:
     # for i in range(0, pat_header_size):
     #     pat[ts_header_size + i] = pat_header[i]
     crc32Value = __genCrc32(pat_header)
+    #4bytes的crc32 ,验证ts包的完整性
     for i in range(0, 4):
         bytes_size = 8 * (3 - i)
         ret = byte(crc32Value >> bytes_size)
@@ -302,7 +312,7 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
     # data_block_size = 0
     # for loop split one pes(one frame) into ts blocks
     while i < pes_payload_size:
-        ts_packet = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
+        ts_packet = bytearray([0xff for jj in range(0, __TS_PACKET_SIZE)])
 
         pid = __AUDIO_PID
         if is_video:

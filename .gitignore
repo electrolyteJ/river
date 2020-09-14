@@ -17,3 +17,4 @@ local.properties
 pc-host-j/out
 android/app/build
 server4j/out
+server4py/venv

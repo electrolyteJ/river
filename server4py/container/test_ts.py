@@ -1,7 +1,8 @@
 from unittest import TestCase
-from container.ts import ts_pes_packet
-from container import datas
+from container.ts import ts_pes_packet, pat_packet, pmt_packet
+# from container import datas
 from container import print_ts_packet
+import re
 
 
 class TestTS_all(TestCase):
@@ -40,13 +41,40 @@ class TestTS_all(TestCase):
             print_ts_packet(p)
 
     def test_video_pes_packet(self):
+        es = bytearray()
+        pts = 0
+        with open('datas.txt', 'r') as f:
+            r = f.readline()
+
+            while len(r) != 0:
+                if "#" in r or ']}' in r:
+                    pass
+                elif "{'pts'" in r:
+                    end = r.index("'es'") - 1
+                    pts = int(r[7:end])
+                else:
+                    for e in r.strip().split(','):
+                        if len(e) == 0:
+                            continue
+                        es.append(int(e.strip(), base=16))
+
+                r = f.readline()
+
+        if len(es) == 0:
+            raise BaseException("es 不能为空")
         __TS_PACKET_SIZE = 188
         is_video = True
         is_keyframe = True
-        d = datas.data2
-        ts_packets_size, ts_packets = ts_pes_packet(d['es'], is_video, is_keyframe, d['pts'], 1)
-        for i in range(0, len(ts_packets)):
-            p = ts_packets[i]
-            print("=" * 20)
-            print('index', i)
-            print_ts_packet(p)
+        ts_packets_size, ts_packets = ts_pes_packet(es, is_video, is_keyframe, pts, pts - 20)
+        # for i in range(0, len(ts_packets)):
+        #     p = ts_packets[i]
+        #     print("=" * 20)
+        #     print('index', i)
+        #     print_ts_packet(p)
+        with open('001.ts', 'wb') as f:
+            f.write(pat_packet())
+            # f.write('\n')
+            f.write(pmt_packet(is_video))
+            for ts_packet in ts_packets:
+                # f.write('\n')
+                f.write(ts_packet)
