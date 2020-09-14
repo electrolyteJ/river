@@ -2,6 +2,7 @@ from unittest import TestCase
 from app.container.ts import ts_pes_packet, pat_packet, pmt_packet
 # from container import datas
 from app.container import print_ts_packet
+from app import Packet, Packet_Type_VIDEO
 
 
 class TestTS_all(TestCase):
@@ -40,40 +41,86 @@ class TestTS_all(TestCase):
             print_ts_packet(p)
 
     def test_video_pes_packet(self):
-        es = bytearray()
-        pts = 0
-        with open('datas.txt', 'r') as f:
-            r = f.readline()
 
+        pts = 0
+        # with open('v_datas0.txt', 'r') as f:
+        #     r = f.readline()
+        #
+        #     while len(r) != 0:
+        #         if "#" in r or ']}' in r:
+        #             pass
+        #         elif "{'pts'" in r:
+        #             end = r.index("'es'") - 1
+        #             pts = int(r[7:end])
+        #         else:
+        #             for e in r.strip().split(','):
+        #                 if len(e) == 0:
+        #                     continue
+        #                 es.append(int(e.strip(), base=16))
+        #
+        #         r = f.readline()
+        ps = list()
+        with open('v_datas1.txt', 'r') as f:
+            r = f.readline()
+            es = bytearray()
+            g_packet_size = 0
+            is_first = True
+            g_pts = 0
+            header = dict()
             while len(r) != 0:
-                if "#" in r or ']}' in r:
-                    pass
-                elif "{'pts'" in r:
-                    end = r.index("'es'") - 1
-                    pts = int(r[7:end])
-                else:
+
+                if '0x' in r:
+
+                    if g_packet_size > 60000:
+                        header['type'] = Packet_Type_VIDEO
+                        header['is_keyframe'] = True if is_first else False
+                        print('超出', pts, g_packet_size, len(es))
+                        ps.append(Packet(header.copy(), es[0:]))
+                        is_first = False
+                        g_packet_size = 0
+                        es.clear()
+                        print(len(es))
                     for e in r.strip().split(','):
                         if len(e) == 0:
                             continue
                         es.append(int(e.strip(), base=16))
 
-                r = f.readline()
+                else:
+                    pts, packet_size = r.strip().split("\t")
+                    g_packet_size += int(packet_size)
+                    g_pts = int(pts)
+                    header['pts'] = g_pts
+                    header['payload_size'] = g_packet_size
 
-        if len(es) == 0:
-            raise BaseException("es 不能为空")
-        __TS_PACKET_SIZE = 188
-        is_video = True
-        is_keyframe = True
-        ts_packets_size, ts_packets = ts_pes_packet(es, is_video, is_keyframe, pts, pts - 20)
-        # for i in range(0, len(ts_packets)):
-        #     p = ts_packets[i]
-        #     print("=" * 20)
-        #     print('index', i)
-        #     print_ts_packet(p)
-        with open('001.ts', 'wb') as f:
-            f.write(pat_packet())
-            # f.write('\n')
-            f.write(pmt_packet(is_video))
-            for ts_packet in ts_packets:
-                # f.write('\n')
-                f.write(ts_packet)
+                r = f.readline()
+            if len(es) > 0:
+                print('last packet :es size',len(es))
+                header['type'] = Packet_Type_VIDEO
+                header['is_keyframe'] = True if is_first else False
+                ps.append(Packet(header.copy(), es[0:]))
+
+        # es_size = len(es)
+        # if es_size > 65526:
+        #     es = es[0:60000]
+        print('ps',len(ps))
+        for i in range(0, len(ps)):
+            p = ps[i]
+            is_video = True if p.header['type'] == Packet_Type_VIDEO else False
+            print('pts',p.header['pts'],p.header['is_keyframe'],is_video)
+            ts_pes_packets_size, ts_pes_packets = ts_pes_packet(
+                p.payload,
+                is_video,
+                p.header['is_keyframe'],
+                p.header['pts'], p.header['pts'] - 2
+            )
+            # print(ts_pes_packets_size)
+            # for i in range(0, len(ts_packets)):
+            #     p = ts_packets[i]
+            #     print("=" * 20)
+            #     print('index', i)
+            #     print_ts_packet(p)
+            with open('00%d.ts' % (i + 1), 'wb') as f:
+                f.write(pat_packet())
+                f.write(pmt_packet(is_video))
+                for ts_packet in ts_pes_packets:
+                    f.write(ts_packet)

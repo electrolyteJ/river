@@ -287,8 +287,8 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
     pes_header_size, pes_header = __gen_pes_header(pes_payload_size, is_video, pts, dts)
     pes_packet_size = pes_header_size + pes_payload_size
     print('pes_packet_size', pes_packet_size)
-    if pes_packet_size > 65526:
-        buffer = buffer[0:65526]
+    ts_pes_packets_size = 0
+
     i = 0
     # data_block_size = 0
     # for loop split one pes(one frame) into ts blocks
@@ -365,6 +365,6 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
 
         # __print_ts_packet(ts_packet)
         ts_packets.append(ts_packet)
+        ts_pes_packets_size += len(ts_packet)
         is_first_packet = False
-
-    return len(ts_packets), ts_packets
+    return ts_pes_packets_size, ts_packets
