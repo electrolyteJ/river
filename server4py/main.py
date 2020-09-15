@@ -1,7 +1,8 @@
 import asyncio
 import subprocess
-from app.codec.h264 import NaluType
+from app.codec import h264
 from app.byte_ext import read64be, read32be
+import os
 
 META_HEADER_SIZE = 12
 NALU_BYTES_SIZE = 4
@@ -23,6 +24,8 @@ NO_PTS = -1
 
 
 async def handle_echo(reader, writer):
+    with open('test_case/v_datas1.txt', 'w') as f:
+        f.write('')
     while True:
         # java long:ff ff ff ff ff ff ff ff -2^63 ~ 2^63
         # java int:00 00 00 20
@@ -48,7 +51,7 @@ async def handle_echo(reader, writer):
                 s = hex(p)
             else:
                 s = s + ',' + hex(p)
-        with open('cjf.txt', 'a') as f:
+        with open('test_case/v_datas1.txt', 'a') as f:
             f.write(str(pts))
             f.write('\t')
             f.write(str(packet_size))
@@ -56,24 +59,14 @@ async def handle_echo(reader, writer):
             f.write(s)
             f.write('\n')
         if sc == start_code:
-            nalu_type = nalu_header & 0x1f
-            print('start code nalu_type', nalu_type)
-            if nalu_type == NaluType.SLICE_NONIDR.value:
-                # print('NaluType.NONIDR')
-                pass
-            elif nalu_type == NaluType.SLICE_IDR.value:
-                print('NaluType.IDR')
-            elif nalu_type == NaluType.SPS.value:
-                print('NaluType.SPS')
-            elif nalu_type == NaluType.AUD.value:
-                print('NaluType.AUD')
+            h264.parse_nalu_type(nalu_header)
+            h264.parse_slice_type(nalu_header)
+            # writer.write(data)
+            # await writer.drain()
 
-                # writer.write(data)
-                # await writer.drain()
-
-                # print("Close the connection")
-                # writer.close()
-                # await asyncio.sleep(2)
+            # print("Close the connection")
+            # writer.close()
+            # await asyncio.sleep(2)
 
 
 async def main():

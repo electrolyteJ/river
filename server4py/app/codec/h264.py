@@ -1,5 +1,30 @@
 from enum import Enum, unique
 
+'''
+                     4bytes          1bytes              
+  +-+-+-+-+-+-+    +-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |NALU/Packet| =  | start code | Packet header |       Packet data       |
+  +-+-+-+-+-+-+    +-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  
+  
+ 0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+
+|F|NRI|   Type  |          
++-+-+-+-+-+-+-+-+
+F:   占1bit,forbidden_zero_bit，h.264规定必须取0，禁止位，当网络发现NAL单元有比特错误时可设置该比特为1，以便接收方纠错或丢掉该单元。
+NRI: 占2bit,nal_ref_idc，取值0~3，指示这个nalu的重要性，I帧、sps、pps通常取3，P帧通常取2，B帧通常取0，nal重要性指示，标志该NAL单元的重要性，值越大，越重要，解码器在解码处理不过来的时候，可以丢掉重要性为0的NALU。
+
+
+Type:占5bit, nal_unit_type:0=未使用 1=非IDR图像片，IDR指关键帧
+                           2=片分区A 3=片分区B
+                           4=片分区C 5=IDR图像片，即关键帧
+                           6=补充增强信息单元(SEI) 7=SPS序列参数集
+                           8=PPS图像参数集 9=分解符
+                           10=序列结束 11=码流结束
+                           12=填充
+                           13~23=保留 24~31=未使用
+'''
+
 
 @unique
 class NaluType(Enum):
@@ -45,11 +70,11 @@ class NaluType(Enum):
 
 @unique
 class SliceType(Enum):
-    P = 0
-    B = 1
-    I = 2
-    SP = 3
-    SI = 4
+    B = 0
+    P = 2
+    I = 3
+    # SP = 3
+    # SI = 4
     # P = 5
     # B = 6
     # I = 7
@@ -64,5 +89,12 @@ nalu_sps_header = bytes([0x0, 0x0, 0x0, 0x1, 0x67, ])
 nalu_pps_header = bytes([0x0, 0x0, 0x0, 0x1, 0x68, ])
 
 
-def parse():
-    pass
+def parse_nalu_type(b: int) -> NaluType:
+    return NaluType(b & 0x1f)
+
+
+def parse_slice_type(b: int) -> SliceType:
+    return SliceType((b & 0x60) >> 5)
+
+# def parse_f(b: int) -> NaluType:
+#     return NaluType((b & 0x80) >> 5)
