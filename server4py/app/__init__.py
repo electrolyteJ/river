@@ -10,9 +10,9 @@ class Packet:
     # StreamID   uint32
     # type
     # flags: int
-    pts: int
+    # pts: int
 
-    def __init__(self, header: dict, payload: bytes) -> None:
+    def __init__(self, header: object, payload: bytes) -> None:
         """
         :param header: container field pts/dts ,type ,flags,payload_size
         :param payload:

@@ -1,4 +1,4 @@
-'''
+"""
     [MPEG-TS 格式解析](https://blog.csdn.net/Kayson12345/article/details/81266587)
     [MPEG2-TS基础](https://blog.csdn.net/rootusers/article/details/42772657)
     [MPEG-TS基础2](https://blog.csdn.net/rootusers/article/details/42970859)
@@ -9,7 +9,7 @@
 [HLS协议及TS封装](https://www.jianshu.com/p/d6311f03b81f)
 
 PAT packet                       PMT  packet              PES packet
-program_number=5            
+program_number=5
 program_map_PID=10   ---->  TS header pid=10
                             stream_type=0x0f audio
                             elementary_PID=20  ---->  TS header pid=20
@@ -20,13 +20,13 @@ program_number=6
 program_map_PID=11  ---->  TS header pid=11
                             ....
 
-program_number=7    
+program_number=7
 program_map_PID=12  ---->  ...
 
 psi/si
 psi: pat pmt
 
-'''
+"""
 
 from app.data_type_ext import uint32, byte
 from app.byte_ext import copy
@@ -121,14 +121,10 @@ __AUDIO_PID = 0x101
 __PAT_PID = 0x000
 __VIDEO_SID = 0xe0
 __AUDIO_SID = 0xc0
+__PES_START_CODE = bytes([0x00, 0x00, 0x01])
 
 
 def pmt_packet(has_video: bool) -> bytes:
-    '''
-
-    :param has_video:
-    :return:
-    '''
     ts_header = bytearray([0x47,
                            # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1
                            # transport_priority=1(高优先级) pid=4097
@@ -251,7 +247,8 @@ def __write_pts_or_dts(buffer, value, flag):
 
 
 def __gen_pes_header(payload_size: int, is_video, pts, dts):
-    pes_header = bytearray([0x00, 0x00, 0x01])
+    pes_header = bytearray()
+    pes_header.extend(__PES_START_CODE)
     pes_header.insert(3, __AUDIO_SID if not is_video else __VIDEO_SID)
     pts_size = 5  # pts 5 bytes
     dts_size = 5
@@ -277,10 +274,24 @@ def __gen_pes_header(payload_size: int, is_video, pts, dts):
 
 
 def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list):
-    '''
-     buffer :max 65526Byte
+    """
+     buffer :max 65526Byte,buffer 为一帧，由于ts要求包大小固定为188bytes，所以这一帧会被切割成为多个188bytes的ts包，
+     当然这些被切片化的碎片在打包为ts包之前，会进行加工处理，在头部加入pts dts 、pcr(如果是视频关键帧)等信息，已让解码器知道如何解析播放
+
+        视频/音频类型包(Packet),一帧视频/音频数据被拆分成N个Packet
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | ts header |   adaptation field    |      payload(pes 1)     |-->第1个Packet
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | ts header |              payload(pes 2)                     |-->第2个Packet
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | ts header |                   ...                           |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | ts header |             payload(pes n-1)                    |-->第n-1个Packet
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      | ts header |   adaptation field    |      payload(pes n)     |-->第n个Packet
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      :return:
-     '''
+    """
     ts_packets = list()
     is_first_packet = True
     pes_payload_size = len(buffer)  # es size == pes_payload_size
@@ -368,3 +379,32 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
         ts_pes_packets_size += len(ts_packet)
         is_first_packet = False
     return ts_pes_packets_size, ts_packets
+
+
+import io
+
+
+def write_to_file(path: str, ps):
+    with open(path, 'ab') as f:
+        f.truncate(0)
+        ps_size = len(ps)
+        for i in range(0, ps_size):
+            p = ps[i]
+            is_video = True if p.header.is_video_packet() else False
+            print('%d dts:%d , pts:%d,is_keyframe:%s,is_video:%s,es packet size:%d' % (
+                i, p.header.dts, p.header.pts, p.header.has_keyframe(), is_video, len(p.payload)))
+
+            ts_pes_packets_size, ts_pes_packets = ts_pes_packet(
+                p.payload,
+                is_video,
+                p.header.has_keyframe(),
+                p.header.pts, p.header.dts
+            )
+            f.write(pat_packet())
+            f.write(pmt_packet(is_video))
+            for ts_packet in ts_pes_packets:
+                f.write(ts_packet)
+
+
+def write_to_stream(writer_fd: io.BytesIO):
+    pass

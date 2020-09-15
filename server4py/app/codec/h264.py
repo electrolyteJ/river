@@ -1,4 +1,6 @@
 from enum import Enum, unique
+import io
+import copy
 
 '''
                      4bytes          1bytes              
@@ -82,11 +84,12 @@ class SliceType(Enum):
     # IS = 9
 
 
-nalu_non_idr_header = bytes([0x0, 0x0, 0x0, 0x1, 0x41, ])
-nalu_idr_header = bytes([0x0, 0x0, 0x0, 0x1, 0x65, ])
-nalu_aud_packet = bytes([0x0, 0x0, 0x0, 0x1, 0x09, 0xf0, ])
-nalu_sps_header = bytes([0x0, 0x0, 0x0, 0x1, 0x67, ])
-nalu_pps_header = bytes([0x0, 0x0, 0x0, 0x1, 0x68, ])
+NALU_START_CODE = bytes([0x00, 0x00, 0x00, 0x01])
+NALU_NON_IDR_HEADER = bytes([0x0, 0x0, 0x0, 0x1, 0x41, ])
+NALU_IDR_HEADER = bytes([0x0, 0x0, 0x0, 0x1, 0x65, ])
+NALU_AUD_PACKET = bytes([0x0, 0x0, 0x0, 0x1, 0x09, 0xf0, ])
+NALU_SPS_HEADER = bytes([0x0, 0x0, 0x0, 0x1, 0x67, ])
+NALU_PPS_HEADER = bytes([0x0, 0x0, 0x0, 0x1, 0x68, ])
 
 
 def parse_nalu_type(b: int) -> NaluType:
@@ -96,5 +99,170 @@ def parse_nalu_type(b: int) -> NaluType:
 def parse_slice_type(b: int) -> SliceType:
     return SliceType((b & 0x60) >> 5)
 
+
 # def parse_f(b: int) -> NaluType:
 #     return NaluType((b & 0x80) >> 5)
+
+PACKET_TYPE_METADATA = 0
+PACKET_TYPE_AUDIO = 1
+PACKET_TYPE_VIDEO = 2
+
+
+class Header:
+    pts: int = 0  # millisecond
+    dts: int = 0
+    type: int = -1
+    __flags: int = 0
+    payload_size: int = 0
+
+    def has_keyframe(self):
+        return (self.__flags & NaluType.SLICE_IDR.value) == NaluType.SLICE_IDR.value \
+               and (self.__flags & SliceType.I.value) == SliceType.I.value
+
+    def clear_flags(self):
+        self.__flags &= 0
+
+    def add_flags(self, f):
+        self.__flags |= f
+
+    def is_metadata_packet(self):
+        return self.type == PACKET_TYPE_METADATA
+
+    def is_audio_packet(self):
+        return self.type == PACKET_TYPE_AUDIO
+
+    def is_video_packet(self):
+        return self.type == PACKET_TYPE_VIDEO
+
+
+class Packet:
+
+    def __init__(self, header: Header, payload: bytes) -> None:
+        super().__init__()
+        self.header = header
+        self.payload = payload
+
+
+def __fill_data(buffer, rr):
+    for e in rr:
+        if len(e) == 0:
+            continue
+        buffer.append(int(e.strip(), base=16))
+
+
+def parse(f):
+    ps = list()
+    r = f.readline()
+    es = bytearray()
+    header = Header()
+    while len(r) != 0:
+        if '0x' in r:
+            rr = r.strip().split(',')
+            nt = parse_nalu_type(int(rr[4], base=16))
+            st = parse_slice_type(int(rr[4], base=16))
+            if nt == NaluType.SPS:
+                es.extend(NALU_AUD_PACKET)
+                __fill_data(es, rr)
+            elif nt == NaluType.SLICE_IDR and st == SliceType.I:
+                header.add_flags(NaluType.SLICE_IDR.value | SliceType.I.value)
+                __fill_data(es, rr)
+                ps.append(Packet(copy.deepcopy(header), es[0:]))
+                es.clear()
+                header.clear_flags()
+            elif st == SliceType.P:
+                header.add_flags(NaluType.SLICE_NONIDR.value | SliceType.P.value)
+                es.extend(NALU_AUD_PACKET)
+                __fill_data(es, rr)
+                ps.append(Packet(copy.deepcopy(header), es[0:]))
+                es.clear()
+                header.clear_flags()
+        else:
+            pts, packet_size = r.strip().split("\t")
+            g_pts = int(pts)  # microsecond
+            header.dts = int(g_pts / 1000) * 90  # millisecond
+            header.pts = int(g_pts / 1000) * 90  # millisecond
+            header.type = PACKET_TYPE_VIDEO
+            header.payload_size = int(packet_size)
+
+        r = f.readline()
+
+    return ps
+
+
+def parse_packet(metadata, p) -> Packet:
+    ret = p.strip().split(',')
+    nt = parse_nalu_type(int(ret[4], base=16))
+    st = parse_slice_type(int(ret[4], base=16))
+
+    header = Header()
+    pts, packet_size = metadata.strip().split("\t")
+    g_pts = int(pts)  # microsecond
+    header.dts = int(g_pts / 1000) * 90  # millisecond
+    header.pts = int(g_pts / 1000) * 90  # millisecond
+    header.type = PACKET_TYPE_VIDEO
+    header.payload_size = int(packet_size)
+    header.add_flags(nt.value | st.value)
+
+    es = bytearray()
+    if nt != NaluType.SLICE_IDR:
+        es.extend(NALU_AUD_PACKET)
+    __fill_data(es, ret)
+    return Packet(header, es)
+
+
+def parse_from_file(path: str) -> list:
+    ps = list()
+    with open(path, 'r') as f:
+        l0 = f.readline()
+        l1 = f.readline().strip()
+        metadata = f.readline()
+        l3 = f.readline()
+        p = l1 + ',' + l3
+
+        while len(p) != 0:
+            ps.append(parse_packet(metadata, p))
+            metadata = f.readline()
+            p = f.readline()
+    return ps
+
+
+def parse_from_stream(reader) -> io.BytesIO:
+    writer_fd = io.BytesIO()
+    with reader as f:
+        r = f.readline()
+        es = bytearray()
+        g_packet_size = 0
+        header = Header()
+        while len(r) != 0:
+            if '0x' in r:
+                rr = r.strip().split(',')
+                nt = parse_nalu_type(int(rr[4], base=16))
+                st = parse_slice_type(int(rr[4], base=16))
+                if nt == NaluType.SPS:
+                    es.extend(NALU_AUD_PACKET)
+                    __fill_data(es, rr)
+                elif nt == NaluType.SLICE_IDR and st == SliceType.I:
+                    header.add_flags(NaluType.SLICE_IDR.value | SliceType.I.value)
+                    __fill_data(es, rr)
+                    # ps.append(Packet(copy.deepcopy(header), es[0:]))
+                    es.clear()
+                    header.clear_flags()
+                    g_packet_size = 0
+                elif st == SliceType.P:
+                    header.add_flags(NaluType.SLICE_NONIDR.value | SliceType.P.value)
+                    es.extend(NALU_AUD_PACKET)
+                    __fill_data(es, rr)
+                    # ps.append(Packet(copy.deepcopy(header), es[0:]))
+                    es.clear()
+                    header.clear_flags()
+                    g_packet_size = 0
+            else:
+                pts, packet_size = r.strip().split("\t")
+                g_packet_size += int(packet_size)
+                g_pts = int(pts)  # microsecond
+                header.dts = int(g_pts / 1000) * 90  # millisecond
+                header.pts = int(g_pts / 1000) * 90  # millisecond
+                header.type = PACKET_TYPE_VIDEO
+                header.payload_size = g_packet_size
+
+            r = f.readline()

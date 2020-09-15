@@ -7,7 +7,7 @@ import os
 META_HEADER_SIZE = 12
 NALU_BYTES_SIZE = 4
 START_CODE_SIZE = 4
-start_code = bytes([0x00, 0x00, 0x00, 0x01])
+
 NO_PTS = -1
 
 ''' The video stream contains raw packets, without time information. When we
@@ -58,7 +58,7 @@ async def handle_echo(reader, writer):
             f.write('\n')
             f.write(s)
             f.write('\n')
-        if sc == start_code:
+        if sc == h264.NALU_START_CODE:
             h264.parse_nalu_type(nalu_header)
             h264.parse_slice_type(nalu_header)
             # writer.write(data)
