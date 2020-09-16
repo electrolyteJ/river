@@ -1,5 +1,4 @@
 from unittest import TestCase
-from app.container.ts import ts_pes_packets, ts_pat_packet, ts_pmt_packet
 # from container import datas
 from app.container import print_ts_packet
 from app import Packet, Packet_Type_VIDEO, Packet_Type_AUDIO
@@ -39,20 +38,25 @@ class TestTS_all(TestCase):
                            0x08, 0x00, 0x89, 0xa0, 0x3e, 0x85, 0xb6, 0x92, 0x57, 0x04, 0x80, 0x00, 0x5b, 0xb7,
                            0x78, 0x00, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x30, 0x00, 0x06, 0x00, 0x38,
                            ])
-        ts_packets_size, ts_packets = ts_pes_packets(es_buffer, is_video, is_keyframe, 0, 0)
-
-        for i in range(0, len(ts_packets)):
-            p = ts_packets[i]
-            print("=" * 20)
-            print('index', i)
-            print_ts_packet(p)
+        # ts_packets_size, ts_packets = ts_pes_packets(es_buffer, is_video, is_keyframe, 0, 0)
+        #
+        # for i in range(0, len(ts_packets)):
+        #     p = ts_packets[i]
+        #     print("=" * 20)
+        #     print('index', i)
+        #     print_ts_packet(p)
 
     def test_video_pes_packet(self):
-        fs = h264.parse_from_file('v_datas1.txt')
-
-        print("=" * 20)
-        print('split elematry stream frame size  %d' % len(fs))
-        path = '001.ts'
-        # with open(path, 'w') as f:
-        #     f.write('')
-        ts.write_to_file(path, fs)
+        with h264.Parser(path='v_datas1.txt') as h264parser:
+            fs = list()
+            f = h264parser.next_frame()
+            while f:
+                fs.append(f)
+                f = h264parser.next_frame()
+            print("=" * 20)
+            print('split elematry stream frame size  %d' % len(fs))
+            path = 'cjf_%03d.ts'
+            with ts.Muxer(path=path) as muxer:
+                for f in fs:
+                    ts_packet_list = muxer.muxe(f)
+                    muxer.write(ts_packet_list.payload)

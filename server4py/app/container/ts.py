@@ -30,6 +30,10 @@ psi: pat pmt
 
 from app.data_type_ext import uint32, byte
 from app.byte_ext import copy
+from asyncio.streams import StreamReader, StreamWriter
+import io
+import datetime
+import time
 
 __crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
@@ -99,7 +103,7 @@ __crcTable = [
 ]
 
 
-def __genCrc32(value):
+def gen_crc32(value):
     crc32 = uint32(0xffffffff)
     for i in range(0, len(value)):
         j = ((crc32 >> 24) ^ uint32(value[i])) & 0xFF
@@ -108,319 +112,352 @@ def __genCrc32(value):
     return crc32
 
 
-__TS_PACKET_SIZE = 188
-__TS_PACKET_HEADER_SIZE = 4
-__TS_PACKET_PAYLOAD_SIZE = 184
-__H264_DEFAULT_HZ = 90
-__patCc = 0
-__pmtCc = 0
-__videoCc = 0
-__audioCc = 0
-__VIDEO_PID = 0x100
-__AUDIO_PID = 0x101
-__PAT_PID = 0x000
-__VIDEO_SID = 0xe0
-__AUDIO_SID = 0xc0
-__PES_START_CODE = bytes([0x00, 0x00, 0x01])
+TS_PACKET_SIZE = 188
+TS_PACKET_HEADER_SIZE = 4
+TS_PACKET_PAYLOAD_SIZE = 184
+
+Packet_Type_UNKNOW = -1
+Packet_Type_METADATA = 0
+Packet_Type_AUDIO = 1
+Packet_Type_VIDEO = 2
 
 
-def ts_pmt_packet(has_video: bool) -> bytes:
-    ts_header = bytearray([0x47,
-                           # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1
-                           # transport_priority=1(高优先级) pid=4097
-                           0x50, 0x01,
-                           # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域)
-                           # continuity_counter=0000
-                           0x10,
-                           # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
-                           0x00])
-    global __pmtCc
-    if __pmtCc > 0xf:
-        __pmtCc = 0
-    ts_header[3] |= __pmtCc & 0x0f
-    __pmtCc = __pmtCc + 1
-    pmt_header = bytearray([0x02,
-                            # 0xb0，0xff：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
-                            # section_length=11111111(255)
-                            0xb0, 0xff,
-                            # 0x00,0x01:program_number=1 频道号码，表示当前的PMT关联到的频道，取值0x0001
-                            0x00, 0x01,
-                            0xc1, 0x00, 0x00,
-                            # 0xe1，0x00：reserved=111(固定) PCR_PID=256(10进制) PCR(节目参考时钟)所在TS分组的PID，指定为视频PID
-                            0xe1, 0x00,
-                            # 0xf0,0x00:reserved=1111(固定) program_info_length=0 节目描述信息，指定为0x000表示没有
-                            0xf0, 0x00])
-    if not has_video:
-        pmt_header[9] = 0x01  # PCR_PID 0xe1,0x01
-        prog_info = bytearray([0x0f, 0xe1, 0x01, 0xf0, 0x00])
-    else:
-        prog_info = bytearray([
-            # h264 or h265 *
-            # 0x1b:stream_type:h264
-            # 0xe1, 0x00： reserved=111(固定） elementary_PID=256
-            0x1b, 0xe1, 0x00, 0xf0, 0x00,
-            # 0x03:mp3
-            # aac
-            # 0x0f:stream_type:aac
-            # 0xe1, 0x01： elementary_PID = 257
-            0x0f, 0xe1, 0x01, 0xf0, 0x00,
-        ])
-    pmt_header[2] = len(prog_info) + 9 + 4  # section_length：表示从下一个字段开始到CRC32(含)之间有用的字节数
-
-    pmt = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
-    ts_header_size = len(ts_header)
-    pmt_header_size = len(pmt_header)
-    prog_info_size = len(prog_info)
-
-    copy(ts_header, pmt)
-    copy(pmt_header, pmt, ts_header_size)
-    copy(prog_info, pmt, ts_header_size + pmt_header_size)
-
-    crc32Value = __genCrc32(pmt[ts_header_size:ts_header_size + pmt_header_size + prog_info_size])
-    for i in range(0, 4):
-        bytes_size = 8 * (3 - i)
-        ret = byte(crc32Value >> bytes_size)
-        pmt[i + ts_header_size + pmt_header_size + prog_info_size] = ret
-    # print('patCc:', __patCc, len(pmt))
-    return pmt
+class Header:
+    timestamp: int = 0  # unit:millisecond
+    packet_type = Packet_Type_UNKNOW
+    packet_size = 0
 
 
-def ts_pat_packet() -> bytes:
-    ts_header = bytearray([0x47,
-                           # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1
-                           # transport_priority=0 pid=0(PAT表的PID值固定为0)
-                           0x40, 0x00,
-                           # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域)
-                           # continuity_counter=0000
-                           0x10,
-                           # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
-                           0x00])
-
-    pat_header = bytearray([0x00,
-                            # 0xb0，0x0d：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
-                            # section_length=1101(13)
-                            0xb0, 0x0d,
-                            # 0x00, 0x01 ：transport_stream_id 传输流ID，固定为0x0001
-                            0x00, 0x01,
-                            0xc1, 0x00, 0x00,
-                            # 0x00,0x01:program_number=1 节目号为0x0000时表示这是NIT，节目号为0x0001时,表示这是PMT
-                            0x00, 0x01,
-                            # 0xf0,0x01:reserved=111(固定) PMT_PID =4097(10进制) 节目号对应内容的PID值
-                            0xf0, 0x01])
-    global __patCc
-    if __patCc > 0xf:
-        __patCc = 0
-    ts_header[3] |= __patCc & 0x0f
-    __patCc = __patCc + 1
-
-    pat = bytearray([0xff for i in range(0, __TS_PACKET_SIZE)])
-    ts_header_size = len(ts_header)
-    pat_header_size = len(pat_header)
-    copy(ts_header, pat)
-    copy(pat_header, pat, ts_header_size)
-    # for i in range(0, ts_header_size):
-    #     pat[i] = ts_header[i]
-    # for i in range(0, pat_header_size):
-    #     pat[ts_header_size + i] = pat_header[i]
-    crc32Value = __genCrc32(pat_header)
-    # 4bytes的crc32 ,验证ts包的完整性
-    for i in range(0, 4):
-        bytes_size = 8 * (3 - i)
-        ret = byte(crc32Value >> bytes_size)
-        pat[i + pat_header_size + ts_header_size] = ret
-    # print('patCc:', __patCc, len(pat))
-    return pat
+class PacketList:
+    def __init__(self, header: Header, payload: bytes) -> None:
+        super().__init__()
+        self.header = header
+        self.payload = payload
 
 
-def __write_pts_or_dts(buffer, value, flag):
-    start = len(buffer)
-    if value > 0x1ffffffff:
-        value -= 0x1ffffffff
-    n = uint32(flag << 4) | ((uint32(value >> 30) & 0x07) << 1) | 1
-    buffer.insert(start, byte(n))
-    n = ((uint32(value >> 15) & 0x7fff) << 1) | 1
-    buffer.insert(start + 1, byte(n >> 8))
-    buffer.insert(start + 2, byte(n))
-    n = (uint32(value & 0x7fff) << 1) | 1
-    buffer.insert(start + 3, byte(n >> 8))
-    buffer.insert(start + 4, byte(n))
+class Muxer():
+    __VIDEO_PID = 0x100
+    __AUDIO_PID = 0x101
+    __PAT_PID = 0x000
+    __VIDEO_SID = 0xe0
+    __AUDIO_SID = 0xc0
+    __PES_START_CODE = bytes([0x00, 0x00, 0x01])
 
+    def __enter__(self):
+        return self
 
-def __gen_pes_header(payload_size: int, is_video, pts, dts):
-    pes_header = bytearray()
-    pes_header.extend(__PES_START_CODE)
-    pes_header.insert(3, __AUDIO_SID if not is_video else __VIDEO_SID)
-    pts_size = 5  # pts 5 bytes
-    dts_size = 5
-    remain_header_size = pts_size
-    flag = 0x80  # 0x80表示只含有pt
-    if is_video and pts != dts:
-        flag |= 0x40  # 取值0xc0表示含有pts和dts
-        remain_header_size = pts_size + dts_size
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.__writer.close()
 
-    remain_packet_size = payload_size + remain_header_size + 3
-    if remain_packet_size > 0xffff:
-        remain_packet_size = 0
-    pes_header.insert(4, byte(remain_packet_size >> 8))
-    pes_header.insert(5, byte(remain_packet_size))
-    pes_header.insert(6, 0x80)
-    pes_header.insert(7, flag)
-    pes_header.insert(8, remain_header_size)
-    # pts and dts
-    __write_pts_or_dts(pes_header, pts, flag >> 6)
-    if is_video and pts != dts:
-        __write_pts_or_dts(pes_header, dts, 1)
-    return len(pes_header), pes_header
+    def __init__(self, path: str = None, sw: StreamWriter = None) -> None:
+        if path is None and sw is None or (path and sw):
+            raise BaseException('path and StreamWriter must exit one of tow')
+        super().__init__()
 
+        self.__patCc = 0
+        self.__pmtCc = 0
+        self.__videoCc = 0
+        self.__audioCc = 0
+        self.path = path
+        self.sw = sw
+        self.__base_time = 0
+        # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
+        self.__writer = open(self.path % self.__j, 'ab') if self.path else self.sw
+        self.__writer.truncate(0)
 
-def ts_pes_packets(buffer: bytes, is_video, need_pcr, pts, dts) -> (int, list):
-    """
-     buffer :max 65526Byte,buffer 为一帧，由于ts要求包大小固定为188bytes，所以这一帧会被切割成为多个188bytes的ts包，
-     当然这些被切片化的碎片在打包为ts包之前，会进行加工处理，在头部加入pts dts 、pcr(如果是视频关键帧)等信息，已让解码器知道如何解析播放
-
-        视频/音频类型包(Packet),一帧视频/音频数据被拆分成N个Packet
-      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-      | ts header |   adaptation field    |      payload(pes 1)     |-->第1个Packet
-      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-      | ts header |              payload(pes 2)                     |-->第2个Packet
-      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-      | ts header |                   ...                           |
-      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-      | ts header |             payload(pes n-1)                    |-->第n-1个Packet
-      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-      | ts header |   adaptation field    |      payload(pes n)     |-->第n个Packet
-      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     :return:
-    """
-    ts_packets = list()
-    is_first_packet = True
-    pes_payload_size = len(buffer)  # es size == pes_payload_size
-    pes_header_size, pes_header = __gen_pes_header(pes_payload_size, is_video, pts, dts)
-    pes_packet_size = pes_header_size + pes_payload_size
-    print('pes_packet_size', pes_packet_size)
-    ts_pes_packets_size = 0
-
-    i = 0
-    # data_block_size = 0
-    # for loop split one pes(one frame) into ts blocks
-    while i < pes_payload_size:
-        ts_packet = bytearray([0xff for jj in range(0, __TS_PACKET_SIZE)])
-
-        pid = __AUDIO_PID
-        if is_video:
-            pid = __VIDEO_PID
-        # ts header
-        ts_packet[0] = 0x47  # sync byte
-        ts_packet[1] = byte(pid >> 8)  # pid high 5 bits
-        if is_first_packet:
-            # unit start indicator 负载单元起始标示符，一个完整的数据包开始时标记为1
-            ts_packet[1] = 0x40 | ts_packet[1]
-        ts_packet[2] = byte(pid)  # pid low 8 bits
-        global __videoCc, __audioCc
-        if is_video:
-            __videoCc = __videoCc + 1
-            if __videoCc > 0xf:
-                __videoCc = 0
-            ts_packet[3] = 0x10 | __videoCc & 0x0f
+    def ts_pmt_packet(self, has_video: bool) -> bytes:
+        ts_header = bytearray([0x47,
+                               # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1
+                               # transport_priority=1(高优先级) pid=4097
+                               0x50, 0x01,
+                               # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域)
+                               # continuity_counter=0000
+                               0x10,
+                               # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+                               0x00])
+        if self.__pmtCc > 0xf:
+            self.__pmtCc = 0
+        ts_header[3] |= self.__pmtCc & 0x0f
+        self.__pmtCc = self.__pmtCc + 1
+        pmt_header = bytearray([0x02,
+                                # 0xb0，0xff：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
+                                # section_length=11111111(255)
+                                0xb0, 0xff,
+                                # 0x00,0x01:program_number=1 频道号码，表示当前的PMT关联到的频道，取值0x0001
+                                0x00, 0x01,
+                                0xc1, 0x00, 0x00,
+                                # 0xe1，0x00：reserved=111(固定) PCR_PID=256(10进制) PCR(节目参考时钟)所在TS分组的PID，指定为视频PID
+                                0xe1, 0x00,
+                                # 0xf0,0x00:reserved=1111(固定) program_info_length=0 节目描述信息，指定为0x000表示没有
+                                0xf0, 0x00])
+        if not has_video:
+            pmt_header[9] = 0x01  # PCR_PID 0xe1,0x01
+            prog_info = bytearray([0x0f, 0xe1, 0x01, 0xf0, 0x00])
         else:
-            __audioCc = __audioCc + 1
-            if __audioCc > 0xf:
-                __audioCc = 0
-            ts_packet[3] = 0x10 | __audioCc & 0x0f
-        ts_packet_index = 4
-        # adaptation_field_size = 0
+            prog_info = bytearray([
+                # h264 or h265 *
+                # 0x1b:stream_type:h264
+                # 0xe1, 0x00： reserved=111(固定） elementary_PID=256
+                0x1b, 0xe1, 0x00, 0xf0, 0x00,
+                # 0x03:mp3
+                # aac
+                # 0x0f:stream_type:aac
+                # 0xe1, 0x01： elementary_PID = 257
+                0x0f, 0xe1, 0x01, 0xf0, 0x00,
+            ])
+        pmt_header[2] = len(prog_info) + 9 + 4  # section_length：表示从下一个字段开始到CRC32(含)之间有用的字节数
 
-        # adaptation_field
-        if is_first_packet and is_video and need_pcr:
-            # first packet,关键帧需要加pcr
-            ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
-            ts_packet[4] = 7
-            ts_packet[5] = 0x50
-            pcr = dts  # 节目时钟参考
-            ts_packet[6] = byte(pcr >> 25)
-            ts_packet[7] = byte((pcr >> 17) & 0xff)
-            ts_packet[8] = byte((pcr >> 9) & 0xff)
-            ts_packet[9] = byte((pcr >> 1) & 0xff)
-            ts_packet[10] = byte(((pcr & 0x1) << 7) | 0x7e)
-            ts_packet[11] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
-            ts_packet_index = 12
-            # adaptation_field_size = 8
+        pmt = bytearray([0xff for i in range(0, TS_PACKET_SIZE)])
+        ts_header_size = len(ts_header)
+        pmt_header_size = len(pmt_header)
+        prog_info_size = len(prog_info)
 
-        should_fill_0xff_size = __TS_PACKET_SIZE - (ts_packet_index + pes_packet_size)
-        # fill 0xff
-        if should_fill_0xff_size > 0:
-            ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
-            # adaptation field
-            ts_packet[ts_packet_index] = byte(should_fill_0xff_size - 1)
-            if should_fill_0xff_size != 1:
-                ts_packet[ts_packet_index + 1] = 0x00
-            ts_packet_index += should_fill_0xff_size
-        # print("ts size:%d\tadaptation_field_size:%d\tfill 0xff size:%d\tpes_header_size:%d " % (__TS_PACKET_HEADER_SIZE,
-        #                                                                                         adaptation_field_size,
-        #                                                                                         should_fill_0xff_size,
-        #                                                                                         pes_header_size))
-        # print('continuity_counter %d pid 0x%x' % (ts_packet[3] & 0x0f,
-        #                                           ((ts_packet[1] & 0b00011111) << 8) | ts_packet[2]
-        #                                           ))
-        # pes header 放在第一个包中
-        if is_first_packet and ts_packet_index < __TS_PACKET_SIZE and pes_header_size > 0:
-            copy(pes_header, ts_packet, ts_packet_index)
-            ts_packet_index += pes_header_size
-            pes_packet_size -= pes_header_size
-        # print("ts_packet_index", ts_packet_index)
-        if ts_packet_index < __TS_PACKET_SIZE:
-            data_block_size = __TS_PACKET_SIZE - ts_packet_index
-            copy(buffer[i:i + data_block_size], ts_packet, ts_packet_index)
-            pes_packet_size -= data_block_size
-            i += data_block_size
+        copy(ts_header, pmt)
+        copy(pmt_header, pmt, ts_header_size)
+        copy(prog_info, pmt, ts_header_size + pmt_header_size)
 
-        # __print_ts_packet(ts_packet)
-        ts_packets.append(ts_packet)
-        ts_pes_packets_size += len(ts_packet)
-        is_first_packet = False
-    return ts_pes_packets_size, ts_packets
+        crc32Value = gen_crc32(pmt[ts_header_size:ts_header_size + pmt_header_size + prog_info_size])
+        for i in range(0, 4):
+            bytes_size = 8 * (3 - i)
+            ret = byte(crc32Value >> bytes_size)
+            pmt[i + ts_header_size + pmt_header_size + prog_info_size] = ret
+        # print('patCc:', __patCc, len(pmt))
+        return pmt
 
+    def ts_pat_packet(self) -> bytes:
+        ts_header = bytearray([0x47,
+                               # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1
+                               # transport_priority=0 pid=0(PAT表的PID值固定为0)
+                               0x40, 0x00,
+                               # 0x10:transport_scrambling_control==00(未加密) adaptation_field_control=01(无自适应域)
+                               # continuity_counter=0000
+                               0x10,
+                               # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+                               0x00])
 
-import io
+        pat_header = bytearray([0x00,
+                                # 0xb0，0x0d：section_syntax_indicator=1(固定) zero=0(固定) reserved=11(固定)
+                                # section_length=1101(13)
+                                0xb0, 0x0d,
+                                # 0x00, 0x01 ：transport_stream_id 传输流ID，固定为0x0001
+                                0x00, 0x01,
+                                0xc1, 0x00, 0x00,
+                                # 0x00,0x01:program_number=1 节目号为0x0000时表示这是NIT，节目号为0x0001时,表示这是PMT
+                                0x00, 0x01,
+                                # 0xf0,0x01:reserved=111(固定) PMT_PID =4097(10进制) 节目号对应内容的PID值
+                                0xf0, 0x01])
+        if self.__patCc > 0xf:
+            self.__patCc = 0
+        ts_header[3] |= self.__patCc & 0x0f
+        self.__patCc = self.__patCc + 1
 
+        pat = bytearray([0xff for i in range(0, TS_PACKET_SIZE)])
+        ts_header_size = len(ts_header)
+        pat_header_size = len(pat_header)
+        copy(ts_header, pat)
+        copy(pat_header, pat, ts_header_size)
+        # for i in range(0, ts_header_size):
+        #     pat[i] = ts_header[i]
+        # for i in range(0, pat_header_size):
+        #     pat[ts_header_size + i] = pat_header[i]
+        crc32Value = gen_crc32(pat_header)
+        # 4bytes的crc32 ,验证ts包的完整性
+        for i in range(0, 4):
+            bytes_size = 8 * (3 - i)
+            ret = byte(crc32Value >> bytes_size)
+            pat[i + pat_header_size + ts_header_size] = ret
+        # print('patCc:', __patCc, len(pat))
+        return pat
 
-def write_to_file(path: str, fs):
-    is_first = True
-    with open(path, 'ab') as f:
-        f.truncate(0)
-        fs_size = len(fs)
-        base_time = 0
-        for i in range(0, fs_size):
-            frame = fs[i]
-            dts = frame.header.dts
-            pts = frame.header.pts
-            dts_timescale = dts * 90  # unit:timescale
-            pts_timescale = pts * 90
-            is_video = True if frame.header.is_video_packet() else False
-            print('%d dts:%d , pts:%d,is_keyframe:%s,is_video:%s,es packet size:%d' % (
-                i, dts, pts, frame.header.is_keyframe(), is_video, len(frame.payload)))
+    def __write_pts_or_dts(self, buffer, value, flag):
+        start = len(buffer)
+        if value > 0x1ffffffff:
+            value -= 0x1ffffffff
+        n = uint32(flag << 4) | ((uint32(value >> 30) & 0x07) << 1) | 1
+        buffer.insert(start, byte(n))
+        n = ((uint32(value >> 15) & 0x7fff) << 1) | 1
+        buffer.insert(start + 1, byte(n >> 8))
+        buffer.insert(start + 2, byte(n))
+        n = (uint32(value & 0x7fff) << 1) | 1
+        buffer.insert(start + 3, byte(n >> 8))
+        buffer.insert(start + 4, byte(n))
 
-            ts_pes_packets_size, ps = ts_pes_packets(
-                frame.payload,
-                is_video,
-                frame.header.is_keyframe(),
-                pts_timescale, dts_timescale
-            )
-            delta = pts - base_time
-            # if delta >= 400 or is_first:
-            # if frame.header.is_keyframe():
-            if is_first:
-                # PAT表和PMT表需要定期插入ts流，因为用户随时可能加入ts流,这个间隔比较小，通常每隔几个视频帧就要加入PAT和PMT
-                f.write(ts_pat_packet())
-                f.write(ts_pmt_packet(is_video))
-                base_time = pts
-                is_first = False
-            for p in ps:
-                f.write(p)
+    def __gen_pes_header(self, payload_size: int, is_video, pts, dts):
+        pes_header = bytearray()
+        pes_header.extend(self.__PES_START_CODE)
+        pes_header.insert(3, self.__AUDIO_SID if not is_video else self.__VIDEO_SID)
+        pts_size = 5  # pts 5 bytes
+        dts_size = 5
+        remain_header_size = pts_size
+        flag = 0x80  # 0x80表示只含有pt
+        if is_video and pts != dts:
+            flag |= 0x40  # 取值0xc0表示含有pts和dts
+            remain_header_size = pts_size + dts_size
 
+        remain_packet_size = payload_size + remain_header_size + 3
+        if remain_packet_size > 0xffff:
+            remain_packet_size = 0
+        pes_header.insert(4, byte(remain_packet_size >> 8))
+        pes_header.insert(5, byte(remain_packet_size))
+        pes_header.insert(6, 0x80)
+        pes_header.insert(7, flag)
+        pes_header.insert(8, remain_header_size)
+        # pts and dts
+        self.__write_pts_or_dts(pes_header, pts, flag >> 6)
+        if is_video and pts != dts:
+            self.__write_pts_or_dts(pes_header, dts, 1)
+        return len(pes_header), pes_header
 
-from asyncio.streams import StreamReader, StreamWriter
+    def ts_pes_packets(self, buffer: bytes, is_video, need_pcr, pts, dts) -> (int, list):
+        """
+         buffer :max 65526Byte,buffer 为一帧，由于ts要求包大小固定为188bytes，所以这一帧会被切割成为多个188bytes的ts包，
+         当然这些被切片化的碎片在打包为ts包之前，会进行加工处理，在头部加入pts dts 、pcr(如果是视频关键帧)等信息，已让解码器知道如何解析播放
 
+            视频/音频类型包(Packet),一帧视频/音频数据被拆分成N个Packet
+          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+          | ts header |   adaptation field    |      payload(pes 1)     |-->第1个Packet
+          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+          | ts header |              payload(pes 2)                     |-->第2个Packet
+          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+          | ts header |                   ...                           |
+          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+          | ts header |             payload(pes n-1)                    |-->第n-1个Packet
+          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+          | ts header |   adaptation field    |      payload(pes n)     |-->第n个Packet
+          +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+         :return:
+        """
+        ts_packets = list()
+        is_first_packet = True
+        pes_payload_size = len(buffer)  # es size == pes_payload_size
+        pes_header_size, pes_header = self.__gen_pes_header(pes_payload_size, is_video, pts, dts)
+        pes_packet_size = pes_header_size + pes_payload_size
+        # print('pes_packet_size', pes_packet_size)
+        ts_pes_packets_size = 0
 
-def write_to_stream(reader: StreamReader, fd: io.BytesIO):
-    pass
+        i = 0
+        # data_block_size = 0
+        # for loop split one pes(one frame) into ts blocks
+        while i < pes_payload_size:
+            ts_packet = bytearray([0xff for jj in range(0, TS_PACKET_SIZE)])
+
+            pid = self.__AUDIO_PID
+            if is_video:
+                pid = self.__VIDEO_PID
+            # ts header
+            ts_packet[0] = 0x47  # sync byte
+            ts_packet[1] = byte(pid >> 8)  # pid high 5 bits
+            if is_first_packet:
+                # unit start indicator 负载单元起始标示符，一个完整的数据包开始时标记为1
+                ts_packet[1] = 0x40 | ts_packet[1]
+            ts_packet[2] = byte(pid)  # pid low 8 bits
+            if is_video:
+                self.__videoCc = self.__videoCc + 1
+                if self.__videoCc > 0xf:
+                    self.__videoCc = 0
+                ts_packet[3] = 0x10 | self.__videoCc & 0x0f
+            else:
+                self.__audioCc = self.__audioCc + 1
+                if self.__audioCc > 0xf:
+                    self.__audioCc = 0
+                ts_packet[3] = 0x10 | self.__audioCc & 0x0f
+            ts_packet_index = 4
+            # adaptation_field_size = 0
+
+            # adaptation_field
+            if is_first_packet and is_video and need_pcr:
+                # first packet,关键帧需要加pcr
+                ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
+                ts_packet[4] = 7
+                ts_packet[5] = 0x50
+                pcr = dts  # 节目时钟参考
+                ts_packet[6] = byte(pcr >> 25)
+                ts_packet[7] = byte((pcr >> 17) & 0xff)
+                ts_packet[8] = byte((pcr >> 9) & 0xff)
+                ts_packet[9] = byte((pcr >> 1) & 0xff)
+                ts_packet[10] = byte(((pcr & 0x1) << 7) | 0x7e)
+                ts_packet[11] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
+                ts_packet_index = 12
+                # adaptation_field_size = 8
+
+            should_fill_0xff_size = TS_PACKET_SIZE - (ts_packet_index + pes_packet_size)
+            # fill 0xff
+            if should_fill_0xff_size > 0:
+                ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
+                # adaptation field
+                ts_packet[ts_packet_index] = byte(should_fill_0xff_size - 1)
+                if should_fill_0xff_size != 1:
+                    ts_packet[ts_packet_index + 1] = 0x00
+                ts_packet_index += should_fill_0xff_size
+            # print("ts size:%d\tadaptation_field_size:%d\tfill 0xff size:%d\tpes_header_size:%d " % (__TS_PACKET_HEADER_SIZE,
+            #                                                                                         adaptation_field_size,
+            #                                                                                         should_fill_0xff_size,
+            #                                                                                         pes_header_size))
+            # print('continuity_counter %d pid 0x%x' % (ts_packet[3] & 0x0f,
+            #                                           ((ts_packet[1] & 0b00011111) << 8) | ts_packet[2]
+            #                                           ))
+            # pes header 放在第一个包中
+            if is_first_packet and ts_packet_index < TS_PACKET_SIZE and pes_header_size > 0:
+                copy(pes_header, ts_packet, ts_packet_index)
+                ts_packet_index += pes_header_size
+                pes_packet_size -= pes_header_size
+            # print("ts_packet_index", ts_packet_index)
+            if ts_packet_index < TS_PACKET_SIZE:
+                data_block_size = TS_PACKET_SIZE - ts_packet_index
+                copy(buffer[i:i + data_block_size], ts_packet, ts_packet_index)
+                pes_packet_size -= data_block_size
+                i += data_block_size
+
+            # __print_ts_packet(ts_packet)
+            ts_packets.append(ts_packet)
+            ts_pes_packets_size += len(ts_packet)
+            is_first_packet = False
+        return ts_pes_packets_size, ts_packets
+
+    __is_first = True
+    __i = 0
+    __j = 1
+
+    def muxe(self, frame, duration=3000) -> PacketList:
+        dts = frame.header.dts
+        pts = frame.header.pts
+        dts_timescale = dts * 90  # unit:timescale
+        pts_timescale = pts * 90
+        is_video = True if frame.header.is_video_packet() else False
+        # print('%d dts:%d , pts:%d,is_keyframe:%s,is_video:%s,es packet size:%d' % (
+        #     self.__i, dts, pts, frame.header.is_keyframe(), is_video, len(frame.payload)))
+        self.__i += 1
+        h = Header()
+        h.packet_type = Packet_Type_VIDEO
+        payload = bytearray()
+        delta = pts - self.__base_time
+        if delta >= duration and frame.header.is_keyframe():
+            # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
+            self.__j += 1
+            self.__writer.close()
+            self.__writer = open(self.path % self.__j, 'ab') if self.path else self.sw
+            self.__writer.truncate(0)
+            self.__base_time = pts
+            self.__is_first = True
+
+        # if frame.header.is_keyframe():
+        # PAT表和PMT表需要定期插入ts流，因为用户随时可能加入ts流,这个间隔比较小，通常每隔几个视频帧就要加入PAT和PMT
+        if self.__is_first:
+            payload.extend(self.ts_pat_packet())
+            payload.extend(self.ts_pmt_packet(is_video))
+            self.__is_first = False
+
+        ts_pes_packets_size, ps = self.ts_pes_packets(
+            frame.payload,
+            is_video,
+            frame.header.is_keyframe(),
+            pts_timescale, dts_timescale
+        )
+
+        for p in ps:
+            payload.extend(p)
+
+        return PacketList(h, payload)
+
+    def write(self, ps):
+        self.__writer.write(ps)

@@ -1,6 +1,6 @@
 from enum import Enum, unique
-import io
-import copy
+from typing import Optional
+from asyncio.streams import StreamReader
 
 '''
                      4bytes          1bytes              
@@ -93,15 +93,6 @@ NALU_AUD_PACKET = bytes([0x0, 0x0, 0x0, 0x1, 0x09, 0xf0, ])
 NALU_SPS_HEADER = bytes([0x0, 0x0, 0x0, 0x1, 0x67, ])
 NALU_PPS_HEADER = bytes([0x0, 0x0, 0x0, 0x1, 0x68, ])
 
-
-def parse_nalu_type(b: int) -> NaluType:
-    return NaluType(b & 0x1f)
-
-
-def parse_frame_type(b: int) -> FrameType:
-    return FrameType((b & 0x60) >> 5)
-
-
 # def parse_f(b: int) -> NaluType:
 #     return NaluType((b & 0x80) >> 5)
 
@@ -146,63 +137,63 @@ class Frame:
         self.payload = payload
 
 
-def __fill_data(buffer, rr):
-    for e in rr:
-        if len(e) == 0:
-            continue
-        buffer.append(int(e.strip(), base=16))
+class Parser:
+    def __enter__(self):
+        return self
 
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.__reader.close()
 
-def parse_frame(metadata, p) -> Frame:
-    ret = p.strip().split(',')
-    nt = parse_nalu_type(int(ret[4], base=16))
-    ft = parse_frame_type(int(ret[4], base=16))
+    def __init__(self, path: str = None, sr: StreamReader = None) -> None:
+        if path is None and sr is None or (path and sr):
+            raise BaseException('path and StreamReader must exit one of tow')
+        super().__init__()
 
-    header = Header()
-    pts, packet_size = metadata.strip().split("\t")
-    g_pts = int(pts)  # microsecond
-    header.dts = int(g_pts / 1000)  # millisecond
-    header.pts = int(g_pts / 1000)  # millisecond
-    header.type = PACKET_TYPE_VIDEO
-    header.payload_size = int(packet_size)
-    header.nalu_type = nt
-    header.frame_type = ft
-    es = bytearray()
-    # if nt != NaluType.SLICE_IDR:
-    es.extend(NALU_AUD_PACKET)
-    __fill_data(es, ret)
-    return Frame(header, es)
+        self.__reader = open(path, 'r') if path else sr
 
+        l0 = self.__reader.readline()
+        self.__sps_pps = self.__reader.readline().strip()
 
-def parse_from_file(path: str) -> list:
-    fs = list()
-    with open(path, 'r') as f:
-        l0 = f.readline()
-        sps_pps = f.readline().strip()
-        header = f.readline()
-        l3 = f.readline()
-        frame = sps_pps + ',' + l3
-        while len(frame) != 0:
-            fs.append(parse_frame(header, frame))
-            header = f.readline()
-            frame = f.readline()
-            if len(frame) != 0:
-                ret = frame.strip().split(',')
-                if parse_frame_type(int(ret[4], base=16)) == FrameType.I:
-                    frame = sps_pps + ',' + frame
-    return fs
+    def __fill_data(self, buffer, rr):
+        for e in rr:
+            if len(e) == 0:
+                continue
+            buffer.append(int(e.strip(), base=16))
 
+    def __parse_nalu_type(self, b: int) -> NaluType:
+        return NaluType(b & 0x1f)
 
-def parse_from_stream(reader) -> io.BytesIO:
-    writer_fd = io.BytesIO()
-    with reader as f:
-        l0 = f.readline()
-        l1 = f.readline().strip()
-        header = f.readline()
-        l3 = f.readline()
-        p = l1 + ',' + l3
-        while len(p) != 0:
-            frame = parse_frame(header, p)
+    def __parse_frame_type(self, b: int) -> FrameType:
+        return FrameType((b & 0x60) >> 5)
 
-            header = f.readline()
-            p = f.readline()
+    def __parse_frame(self, metadata, p) -> Frame:
+        ret = p.strip().split(',')
+        nt = self.__parse_nalu_type(int(ret[4], base=16))
+        ft = self.__parse_frame_type(int(ret[4], base=16))
+
+        header = Header()
+        pts, packet_size = metadata.strip().split("\t")
+        g_pts = int(pts)  # microsecond
+        header.dts = int(g_pts / 1000)  # millisecond
+        header.pts = int(g_pts / 1000)  # millisecond
+        header.type = PACKET_TYPE_VIDEO
+        header.payload_size = int(packet_size)
+        header.nalu_type = nt
+        header.frame_type = ft
+        es = bytearray()
+        # if nt != NaluType.SLICE_IDR:
+        es.extend(NALU_AUD_PACKET)
+        self.__fill_data(es, ret)
+        return Frame(header, es)
+
+    def next_frame(self) -> Optional[Frame]:
+        reader = self.__reader
+        header = reader.readline()
+        frame = reader.readline()
+        if len(frame) != 0:
+            ret = frame.strip().split(',')
+            if self.__parse_frame_type(int(ret[4], base=16)) == FrameType.I:
+                frame = self.__sps_pps + ',' + frame
+            return self.__parse_frame(header, frame) if len(frame) != 0 else None
+        else:
+            return None
