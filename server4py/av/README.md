@@ -1,1 +1,1 @@
-[0] % ffmpeg -i caihong.mp4  -codec:v libx264 -codec:a mp3 -map 0 -f ssegment -segment_format mpegts -segment_list playlist.m3u8 -segment_time 10 out%03d.ts
+ffmpeg -i caihong.mp4  -codec:v libx264 -codec:a mp3 -map 0 -f ssegment -segment_format mpegts -segment_list ./caihong/playlist.m3u8 -segment_time 10 ./caihong/out%03d.ts

@@ -23,7 +23,7 @@ NO_PTS = -1
 
 
 async def handle_echo(reader, writer):
-    with open('test_case/v_datas1.txt', 'w') as f:
+    with open('test_case/v_datas2.txt', 'w') as f:
         f.write('')
     while True:
         # java long:ff ff ff ff ff ff ff ff -2^63 ~ 2^63
@@ -50,7 +50,7 @@ async def handle_echo(reader, writer):
                 s = hex(p)
             else:
                 s = s + ',' + hex(p)
-        with open('test_case/v_datas1.txt', 'a') as f:
+        with open('test_case/v_datas2.txt', 'a') as f:
             f.write(str(pts))
             f.write('\t')
             f.write(str(packet_size))

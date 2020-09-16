@@ -273,7 +273,7 @@ def __gen_pes_header(payload_size: int, is_video, pts, dts):
     return len(pes_header), pes_header
 
 
-def ts_pes_packets(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list):
+def ts_pes_packets(buffer: bytes, is_video, need_pcr, pts, dts) -> (int, list):
     """
      buffer :max 65526Byte,buffer 为一帧，由于ts要求包大小固定为188bytes，所以这一帧会被切割成为多个188bytes的ts包，
      当然这些被切片化的碎片在打包为ts包之前，会进行加工处理，在头部加入pts dts 、pcr(如果是视频关键帧)等信息，已让解码器知道如何解析播放
@@ -331,12 +331,12 @@ def ts_pes_packets(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list
         # adaptation_field_size = 0
 
         # adaptation_field
-        if is_first_packet and is_video and is_keyframe:
+        if is_first_packet and is_video and need_pcr:
             # first packet,关键帧需要加pcr
             ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
             ts_packet[4] = 7
             ts_packet[5] = 0x50
-            pcr = dts
+            pcr = dts  # 节目时钟参考
             ts_packet[6] = byte(pcr >> 25)
             ts_packet[7] = byte((pcr >> 17) & 0xff)
             ts_packet[8] = byte((pcr >> 9) & 0xff)
@@ -385,30 +385,42 @@ import io
 
 
 def write_to_file(path: str, fs):
-    first = True
+    is_first = True
     with open(path, 'ab') as f:
         f.truncate(0)
         fs_size = len(fs)
+        base_time = 0
         for i in range(0, fs_size):
             frame = fs[i]
+            dts = frame.header.dts
+            pts = frame.header.pts
+            dts_timescale = dts * 90  # unit:timescale
+            pts_timescale = pts * 90
             is_video = True if frame.header.is_video_packet() else False
             print('%d dts:%d , pts:%d,is_keyframe:%s,is_video:%s,es packet size:%d' % (
-                i, frame.header.dts, frame.header.pts, frame.header.has_keyframe(), is_video, len(frame.payload)))
+                i, dts, pts, frame.header.is_keyframe(), is_video, len(frame.payload)))
 
             ts_pes_packets_size, ps = ts_pes_packets(
                 frame.payload,
                 is_video,
-                frame.header.has_keyframe(),
-                frame.header.pts, frame.header.dts
+                frame.header.is_keyframe(),
+                pts_timescale, dts_timescale
             )
-            # PAT表和PMT表需要定期插入ts流，因为用户随时可能加入ts流,这个间隔比较小，通常每隔几个视频帧就要加入PAT和PMT
-            if i % 7 == 0:
+            delta = pts - base_time
+            # if delta >= 400 or is_first:
+            # if frame.header.is_keyframe():
+            if is_first:
+                # PAT表和PMT表需要定期插入ts流，因为用户随时可能加入ts流,这个间隔比较小，通常每隔几个视频帧就要加入PAT和PMT
                 f.write(ts_pat_packet())
                 f.write(ts_pmt_packet(is_video))
-                first = False
+                base_time = pts
+                is_first = False
             for p in ps:
                 f.write(p)
 
 
-def write_to_stream(reader_, fd: io.BytesIO):
+from asyncio.streams import StreamReader, StreamWriter
+
+
+def write_to_stream(reader: StreamReader, fd: io.BytesIO):
     pass

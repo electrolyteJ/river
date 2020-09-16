@@ -55,7 +55,7 @@ class NaluType(Enum):
     22..23 Reserved                                                       non-VCL
     24..31 Unspecified                                                    non-VCL
 """
-    # unspecified = 0
+    UNSPECIFIED = 0
     SLICE_NONIDR = 1
     SLICE_PA = 2
     SLICE_PB = 3
@@ -72,6 +72,7 @@ class NaluType(Enum):
 
 @unique
 class FrameType(Enum):
+    UNKNOWN = -1
     B = 0
     P = 2
     I = 3
@@ -110,22 +111,19 @@ PACKET_TYPE_VIDEO = 2
 
 
 class Header:
-    pts: int = 0  # millisecond
+    pts: int = 0  # unit:millisecond
     dts: int = 0
+    frame_type: FrameType = FrameType.UNKNOWN
+    nalu_type: NaluType = NaluType.UNSPECIFIED
     type: int = -1
     __flags: int = 0
     payload_size: int = 0
 
-    def has_keyframe(self):
-        # return (self.__flags & NaluType.SLICE_IDR.value) == NaluType.SLICE_IDR.value \
-        #        and (self.__flags & SliceType.I.value) == SliceType.I.value
-        return (self.__flags & FrameType.I.value) == FrameType.I.value
+    def is_keyframe(self):
+        return self.frame_type == FrameType.I
 
-    def clear_flags(self):
-        self.__flags &= 0
-
-    def add_flags(self, f):
-        self.__flags |= f
+    def is_sps(self):
+        return self.nalu_type == NaluType.SPS
 
     def is_metadata_packet(self):
         return self.type == PACKET_TYPE_METADATA
@@ -155,45 +153,6 @@ def __fill_data(buffer, rr):
         buffer.append(int(e.strip(), base=16))
 
 
-def parse(f):
-    ps = list()
-    r = f.readline()
-    es = bytearray()
-    header = Header()
-    while len(r) != 0:
-        if '0x' in r:
-            rr = r.strip().split(',')
-            nt = parse_nalu_type(int(rr[4], base=16))
-            st = parse_frame_type(int(rr[4], base=16))
-            if nt == NaluType.SPS:
-                es.extend(NALU_AUD_PACKET)
-                __fill_data(es, rr)
-            elif nt == NaluType.SLICE_IDR and st == FrameType.I:
-                header.add_flags(NaluType.SLICE_IDR.value | FrameType.I.value)
-                __fill_data(es, rr)
-                ps.append(Frame(copy.deepcopy(header), es[0:]))
-                es.clear()
-                header.clear_flags()
-            elif st == FrameType.P:
-                header.add_flags(NaluType.SLICE_NONIDR.value | FrameType.P.value)
-                es.extend(NALU_AUD_PACKET)
-                __fill_data(es, rr)
-                ps.append(Frame(copy.deepcopy(header), es[0:]))
-                es.clear()
-                header.clear_flags()
-        else:
-            pts, packet_size = r.strip().split("\t")
-            g_pts = int(pts)  # microsecond
-            header.dts = int(g_pts / 1000) * 90  # millisecond
-            header.pts = int(g_pts / 1000) * 90  # millisecond
-            header.type = PACKET_TYPE_VIDEO
-            header.payload_size = int(packet_size)
-
-        r = f.readline()
-
-    return ps
-
-
 def parse_frame(metadata, p) -> Frame:
     ret = p.strip().split(',')
     nt = parse_nalu_type(int(ret[4], base=16))
@@ -202,13 +161,12 @@ def parse_frame(metadata, p) -> Frame:
     header = Header()
     pts, packet_size = metadata.strip().split("\t")
     g_pts = int(pts)  # microsecond
-    header.dts = int(g_pts / 1000) * 90  # millisecond
-    header.pts = int(g_pts / 1000) * 90  # millisecond
+    header.dts = int(g_pts / 1000)  # millisecond
+    header.pts = int(g_pts / 1000)  # millisecond
     header.type = PACKET_TYPE_VIDEO
     header.payload_size = int(packet_size)
-    # header.add_flags(nt.value | st.value)
-    header.add_flags(ft.value)
-
+    header.nalu_type = nt
+    header.frame_type = ft
     es = bytearray()
     # if nt != NaluType.SLICE_IDR:
     es.extend(NALU_AUD_PACKET)
@@ -220,14 +178,18 @@ def parse_from_file(path: str) -> list:
     fs = list()
     with open(path, 'r') as f:
         l0 = f.readline()
-        l1 = f.readline().strip()
+        sps_pps = f.readline().strip()
         header = f.readline()
         l3 = f.readline()
-        frame = l1 + ',' + l3
+        frame = sps_pps + ',' + l3
         while len(frame) != 0:
             fs.append(parse_frame(header, frame))
             header = f.readline()
             frame = f.readline()
+            if len(frame) != 0:
+                ret = frame.strip().split(',')
+                if parse_frame_type(int(ret[4], base=16)) == FrameType.I:
+                    frame = sps_pps + ',' + frame
     return fs
 
 

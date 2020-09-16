@@ -2,7 +2,8 @@ import uvloop
 import asyncio
 from aiohttp import web
 
-# //localhost:8081/live/movie.m3u8
+
+# //localhost:8081/live/movie0.m3u8
 # //localhost: 8081/live/xxxx.ts
 
 
@@ -19,18 +20,27 @@ async def handle_m3u8(request):
         "Access-Control-Allow-Origin": "*",
         "Content-Type": "audio/x-mpegurl",
         "Content-Disposition": "inline; filename=\"{}\"".format("1967.mp3.m3u8"),
-        }
-    # print('cjf-handle_m3u8', '\n', headers, '\n')
+        'Content-Length': 111
+    }
     print('cjf-handle_m3u8', '\n', headers, '\n', b.decode('utf-8'))
     return web.Response(body=b, headers=headers)
 
 
 async def handle_ts(request):
-    digest = request.match_info["digest"]
-    segment_num = int(request.match_info["num"])
-    ts_path = 'cache/{}/{}.{:05d}.ts'.format(digest, digest, segment_num)
+    ts_path = request.match_info["ts_path"]
     print('cjf-handle_ts', '\n', ts_path)
-    return web.FileResponse(ts_path)
+    resp = web.StreamResponse(
+        reason='OK',
+        headers={
+            "Content-Type": "video/mp2ts",
+            'Content-Length': 111
+        })
+    await resp.prepare(request)
+    for _ in range(1000000):
+        await resp.write(b'Hello world')
+        await resp.drain()  # switch point
+    await resp.write_eof()
+    return resp
 
 
 def cors_headers():
@@ -52,6 +62,7 @@ async def cors_middleware(app, handler):
             response = await handler(request)
         response.headers.update(cors_headers())
         return response
+
     return middleware_handler
 
 
@@ -61,8 +72,8 @@ def main():
     # app = web.Application(middlewares=[cors_middleware])
     app = web.Application()
     app.add_routes([web.get('/', handle_root),
-                    web.get('/live/movie.m3u8', handle_m3u8),
-                    web.get('/segments/{digest}/{num}', handle_ts),
+                    web.get('/live/movie0.m3u8', handle_m3u8),
+                    web.get('/live/movie/{ts_path}', handle_ts),
                     ])
     web.run_app(app, port=8081)
 
