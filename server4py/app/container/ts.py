@@ -124,7 +124,7 @@ __AUDIO_SID = 0xc0
 __PES_START_CODE = bytes([0x00, 0x00, 0x01])
 
 
-def pmt_packet(has_video: bool) -> bytes:
+def ts_pmt_packet(has_video: bool) -> bytes:
     ts_header = bytearray([0x47,
                            # 0x50,0x01:transport_error_indicator=0 payload_unit_start_indicator=1
                            # transport_priority=1(高优先级) pid=4097
@@ -185,7 +185,7 @@ def pmt_packet(has_video: bool) -> bytes:
     return pmt
 
 
-def pat_packet() -> bytes:
+def ts_pat_packet() -> bytes:
     ts_header = bytearray([0x47,
                            # 0x40,0x00:transport_error_indicator=0 payload_unit_start_indicator=1
                            # transport_priority=0 pid=0(PAT表的PID值固定为0)
@@ -273,7 +273,7 @@ def __gen_pes_header(payload_size: int, is_video, pts, dts):
     return len(pes_header), pes_header
 
 
-def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list):
+def ts_pes_packets(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list):
     """
      buffer :max 65526Byte,buffer 为一帧，由于ts要求包大小固定为188bytes，所以这一帧会被切割成为多个188bytes的ts包，
      当然这些被切片化的碎片在打包为ts包之前，会进行加工处理，在头部加入pts dts 、pcr(如果是视频关键帧)等信息，已让解码器知道如何解析播放
@@ -384,27 +384,31 @@ def ts_pes_packet(buffer: bytes, is_video, is_keyframe, pts, dts) -> (int, list)
 import io
 
 
-def write_to_file(path: str, ps):
+def write_to_file(path: str, fs):
+    first = True
     with open(path, 'ab') as f:
         f.truncate(0)
-        ps_size = len(ps)
-        for i in range(0, ps_size):
-            p = ps[i]
-            is_video = True if p.header.is_video_packet() else False
+        fs_size = len(fs)
+        for i in range(0, fs_size):
+            frame = fs[i]
+            is_video = True if frame.header.is_video_packet() else False
             print('%d dts:%d , pts:%d,is_keyframe:%s,is_video:%s,es packet size:%d' % (
-                i, p.header.dts, p.header.pts, p.header.has_keyframe(), is_video, len(p.payload)))
+                i, frame.header.dts, frame.header.pts, frame.header.has_keyframe(), is_video, len(frame.payload)))
 
-            ts_pes_packets_size, ts_pes_packets = ts_pes_packet(
-                p.payload,
+            ts_pes_packets_size, ps = ts_pes_packets(
+                frame.payload,
                 is_video,
-                p.header.has_keyframe(),
-                p.header.pts, p.header.dts
+                frame.header.has_keyframe(),
+                frame.header.pts, frame.header.dts
             )
-            f.write(pat_packet())
-            f.write(pmt_packet(is_video))
-            for ts_packet in ts_pes_packets:
-                f.write(ts_packet)
+            # PAT表和PMT表需要定期插入ts流，因为用户随时可能加入ts流,这个间隔比较小，通常每隔几个视频帧就要加入PAT和PMT
+            if i % 7 == 0:
+                f.write(ts_pat_packet())
+                f.write(ts_pmt_packet(is_video))
+                first = False
+            for p in ps:
+                f.write(p)
 
 
-def write_to_stream(writer_fd: io.BytesIO):
+def write_to_stream(reader_, fd: io.BytesIO):
     pass

@@ -1,11 +1,11 @@
 from unittest import TestCase
-from app.container.ts import ts_pes_packet, pat_packet, pmt_packet
+from app.container.ts import ts_pes_packets, ts_pat_packet, ts_pmt_packet
 # from container import datas
 from app.container import print_ts_packet
 from app import Packet, Packet_Type_VIDEO, Packet_Type_AUDIO
 import os
 import time
-from app.codec.h264 import NALU_AUD_PACKET, NaluType, SliceType
+from app.codec.h264 import NALU_AUD_PACKET, NaluType, FrameType
 from app.data_type_ext import int32, uint64, uint32
 import math
 from app.codec import h264
@@ -39,7 +39,7 @@ class TestTS_all(TestCase):
                            0x08, 0x00, 0x89, 0xa0, 0x3e, 0x85, 0xb6, 0x92, 0x57, 0x04, 0x80, 0x00, 0x5b, 0xb7,
                            0x78, 0x00, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x30, 0x00, 0x06, 0x00, 0x38,
                            ])
-        ts_packets_size, ts_packets = ts_pes_packet(es_buffer, is_video, is_keyframe, 0, 0)
+        ts_packets_size, ts_packets = ts_pes_packets(es_buffer, is_video, is_keyframe, 0, 0)
 
         for i in range(0, len(ts_packets)):
             p = ts_packets[i]
@@ -48,11 +48,11 @@ class TestTS_all(TestCase):
             print_ts_packet(p)
 
     def test_video_pes_packet(self):
-        ps = h264.parse_from_file('v_datas1.txt')
+        fs = h264.parse_from_file('v_datas1.txt')
 
         print("=" * 20)
-        print('split elematry stream into %d size' % len(ps))
+        print('split elematry stream frame size  %d' % len(fs))
         path = '001.ts'
         # with open(path, 'w') as f:
         #     f.write('')
-        ts.write_to_file(path, ps)
+        ts.write_to_file(path, fs)

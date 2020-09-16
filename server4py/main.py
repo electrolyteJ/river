@@ -1,11 +1,10 @@
 import asyncio
 import subprocess
 from app.codec import h264
-from app.byte_ext import read64be, read32be
 import os
+from app.byte_ext import read64be, read32be
 
 META_HEADER_SIZE = 12
-NALU_BYTES_SIZE = 4
 START_CODE_SIZE = 4
 
 NO_PTS = -1
@@ -58,9 +57,6 @@ async def handle_echo(reader, writer):
             f.write('\n')
             f.write(s)
             f.write('\n')
-        if sc == h264.NALU_START_CODE:
-            h264.parse_nalu_type(nalu_header)
-            h264.parse_slice_type(nalu_header)
             # writer.write(data)
             # await writer.drain()
 
