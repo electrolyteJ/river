@@ -55,8 +55,15 @@ class TestTS_all(TestCase):
                 f = h264parser.next_frame()
             print("=" * 20)
             print('split elematry stream frame size  %d' % len(fs))
-            path = 'cjf_%03d.ts'
-            with ts.Muxer(path=path) as muxer:
-                for f in fs:
-                    ts_packet_list = muxer.muxe(f)
-                    muxer.write(ts_packet_list.payload)
+            # with ts.Muxer() as muxer:
+            #     for f in fs:
+            #         ts_packet_list = muxer.muxe(f)
+            #         muxer.write(ts_packet_list.payload)
+            # ts_filename to bytes
+
+            muxer = ts.Muxer(strategy=ts.Strategy.WRITE_TO_MEMORY)
+            for f in fs:
+                ts_packet_list = muxer.muxe(f)
+                muxer.write(ts_packet_list.payload)
+                if isinstance(muxer.cache, ts.MemCache):
+                    print(muxer.cache.buffer[muxer.cache.cur_key][0:10].hex())

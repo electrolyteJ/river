@@ -135,6 +135,74 @@ class PacketList:
         self.payload = payload
 
 
+from enum import Enum, unique
+
+
+@unique
+class Strategy(Enum):
+    WRITE_TO_MEMORY = 0
+    WRITE_TO_DISK = 1
+
+
+from singleton import Singleton
+
+
+class Cache:
+    @staticmethod
+    def create(s):
+        if s == Strategy.WRITE_TO_MEMORY:
+            return MemCache()
+        else:
+            return DiskCache()
+
+    def allocate_block(self, key):
+        raise NotImplementedError
+
+    def write_to_block(self, b):
+        raise NotImplementedError
+
+
+class MemCache(Cache):
+    __metaclass__ = Singleton
+    # buffer: dict(map=(str,bytearray)) = {}
+    buffer: dict = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def allocate_block(self, key):
+        self.cur_key = key
+        self.buffer[self.cur_key] = bytearray()
+
+    def write_to_block(self, b):
+        if self.cur_key is None:
+            raise BaseException('key must be not empty')
+        block: bytearray = self.buffer[self.cur_key]
+        block.extend(b)
+
+
+class DiskCache(Cache):
+    __metaclass__ = Singleton
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.__writer.close()
+
+    def allocate_block(self, key):
+        self.cur_key = key
+
+    def write_to_block(self, b):
+        if self.cur_key is None:
+            raise BaseException('key must be not empty')
+        self.__writer = open(self.cur_key, 'ab')
+        self.__writer.write(b)
+
+
 class Muxer():
     __VIDEO_PID = 0x100
     __AUDIO_PID = 0x101
@@ -147,23 +215,20 @@ class Muxer():
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.__writer.close()
+        pass
 
-    def __init__(self, path: str = None, sw: StreamWriter = None) -> None:
-        if path is None and sw is None or (path and sw):
-            raise BaseException('path and StreamWriter must exit one of tow')
+    def __init__(self, path_template: str = '%03d.ts', strategy: Strategy = Strategy.WRITE_TO_DISK) -> None:
         super().__init__()
 
         self.__patCc = 0
         self.__pmtCc = 0
         self.__videoCc = 0
         self.__audioCc = 0
-        self.path = path
-        self.sw = sw
+        self.path_template = path_template
         self.__base_time = 0
+        self.cache = Cache.create(strategy)
+        self.cache.allocate_block(path_template % self.__j)
         # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
-        self.__writer = open(self.path % self.__j, 'ab') if self.path else self.sw
-        self.__writer.truncate(0)
 
     def ts_pmt_packet(self, has_video: bool) -> bytes:
         ts_header = bytearray([0x47,
@@ -434,9 +499,7 @@ class Muxer():
         if delta >= duration and frame.header.is_keyframe():
             # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
             self.__j += 1
-            self.__writer.close()
-            self.__writer = open(self.path % self.__j, 'ab') if self.path else self.sw
-            self.__writer.truncate(0)
+            self.cache.allocate_block(self.path_template % self.__j)
             self.__base_time = pts
             self.__is_first = True
 
@@ -460,4 +523,5 @@ class Muxer():
         return PacketList(h, payload)
 
     def write(self, ps):
-        self.__writer.write(ps)
+        with self.cache as c:
+            c.write_to_block(ps)
