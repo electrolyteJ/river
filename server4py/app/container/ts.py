@@ -161,6 +161,27 @@ class Cache:
     def write_to_block(self, b):
         raise NotImplementedError
 
+    def write_duration_to_eof(self, duration):
+        raise NotImplementedError
+
+
+class TSBlock:
+    """
+    ts data storage in memory
+    """
+    duration: int = 0  # unit:second
+    name: str = ''
+    b = bytearray()
+
+
+class TSFile:
+    """
+    ts data storage in disk
+    """
+    duration: int = 0  # unit:second
+    name: str = ''
+    ts_file_path = ''
+
 
 class MemCache(Cache):
     __metaclass__ = Singleton
@@ -175,13 +196,21 @@ class MemCache(Cache):
 
     def allocate_block(self, key):
         self.cur_key = key
-        self.buffer[self.cur_key] = bytearray()
+        tsfile = TSBlock()
+        tsfile.name = key
+        self.buffer[self.cur_key] = tsfile
+
+    def write_duration_to_eof(self, duration):
+        if self.cur_key is None:
+            raise BaseException('key must be not empty')
+        tsfile = self.buffer[self.cur_key]
+        tsfile.duration = duration
 
     def write_to_block(self, b):
         if self.cur_key is None:
             raise BaseException('key must be not empty')
-        block: bytearray = self.buffer[self.cur_key]
-        block.extend(b)
+        tsfile = self.buffer[self.cur_key]
+        tsfile.b.extend(b)
 
 
 class DiskCache(Cache):
@@ -201,6 +230,9 @@ class DiskCache(Cache):
             raise BaseException('key must be not empty')
         self.__writer = open(self.cur_key, 'ab')
         self.__writer.write(b)
+
+    def write_duration_to_eof(self, duration):
+        pass
 
 
 class Muxer():
@@ -483,7 +515,7 @@ class Muxer():
     __i = 0
     __j = 1
 
-    def muxe(self, frame, duration=3000) -> PacketList:
+    def muxe(self, frame, max_duration=3000) -> PacketList:
         dts = frame.header.dts
         pts = frame.header.pts
         dts_timescale = dts * 90  # unit:timescale
@@ -496,9 +528,10 @@ class Muxer():
         h.packet_type = Packet_Type_VIDEO
         payload = bytearray()
         delta = pts - self.__base_time
-        if delta >= duration and frame.header.is_keyframe():
+        if delta >= max_duration and frame.header.is_keyframe():
             # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
             self.__j += 1
+            self.cache.write_duration_to_eof(int(delta / 1000))
             self.cache.allocate_block(self.path_template % self.__j)
             self.__base_time = pts
             self.__is_first = True

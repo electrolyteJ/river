@@ -21,8 +21,8 @@ NO_PTS = -1
      It is followed by <packet_size> bytes containing the packet/frame.
 '''
 
-
-async def handle_echo(reader, writer):
+from asyncio.streams import StreamReader, StreamWriter
+async def handle_echo(reader, writer:StreamWriter):
     with open('test_case/v_datas2.txt', 'w') as f:
         f.write('')
     while True:

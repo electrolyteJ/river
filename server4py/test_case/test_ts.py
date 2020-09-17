@@ -1,14 +1,9 @@
 from unittest import TestCase
-# from container import datas
-from app.container import print_ts_packet
-from app import Packet, Packet_Type_VIDEO, Packet_Type_AUDIO
-import os
-import time
-from app.codec.h264 import NALU_AUD_PACKET, NaluType, FrameType
-from app.data_type_ext import int32, uint64, uint32
-import math
 from app.codec import h264
 from app.container import ts
+import time
+import asyncio
+from queue import Queue
 
 
 class TestTS_all(TestCase):
@@ -46,7 +41,7 @@ class TestTS_all(TestCase):
         #     print('index', i)
         #     print_ts_packet(p)
 
-    def test_video_pes_packet(self):
+    def test_video_file(self):
         with h264.Parser(path='v_datas1.txt') as h264parser:
             fs = list()
             f = h264parser.next_frame()
@@ -55,15 +50,37 @@ class TestTS_all(TestCase):
                 f = h264parser.next_frame()
             print("=" * 20)
             print('split elematry stream frame size  %d' % len(fs))
-            # with ts.Muxer() as muxer:
-            #     for f in fs:
-            #         ts_packet_list = muxer.muxe(f)
-            #         muxer.write(ts_packet_list.payload)
-            # ts_filename to bytes
+            with ts.Muxer() as muxer:
+                for f in fs:
+                    ts_packet_list = muxer.muxe(f)
+                    muxer.write(ts_packet_list.payload)
 
-            muxer = ts.Muxer(strategy=ts.Strategy.WRITE_TO_MEMORY)
-            for f in fs:
-                ts_packet_list = muxer.muxe(f)
-                muxer.write(ts_packet_list.payload)
-                if isinstance(muxer.cache, ts.MemCache):
-                    print(muxer.cache.buffer[muxer.cache.cur_key][0:10].hex())
+    def setUp(self):
+        super().setUp()
+        self.muxer = ts.Muxer(strategy=ts.Strategy.WRITE_TO_MEMORY)
+
+    async def consumer(self):
+        path = '001.ts'
+        while True:
+            d = self.muxer.cache.buffer.get(path)
+            if d:
+                print(d.name, d.duration)
+                
+        # print([(ts_block.name, ts_block.duration) for ts_block in muxer.cache.buffer.values()])
+
+    async def producter(self):
+        with h264.Parser(path='v_datas1.txt') as h264parser:
+            f = h264parser.next_frame()
+            while f:
+                ts_packet_list = self.muxer.muxe(f)
+                self.muxer.write(ts_packet_list.payload)
+                # print([(ts_block.name, ts_block.duration) for ts_block in self.muxer.cache.buffer.values()])
+                # await asyncio.sleep(0.5)
+                f = h264parser.next_frame()
+
+    def test_video_stream(self):
+        loop = asyncio.get_event_loop()
+        res = loop.run_until_complete(asyncio.wait(
+            [self.producter(), self.consumer()]
+        ))
+        loop.close()
