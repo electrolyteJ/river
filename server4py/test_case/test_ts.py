@@ -58,29 +58,35 @@ class TestTS_all(TestCase):
     def setUp(self):
         super().setUp()
         self.muxer = ts.Muxer(strategy=ts.Strategy.WRITE_TO_MEMORY)
+        self.q = Queue()
 
     async def consumer(self):
         path = '001.ts'
+        print('consumer')
         while True:
-            d = self.muxer.cache.buffer.get(path)
-            if d:
-                print(d.name, d.duration)
-                
-        # print([(ts_block.name, ts_block.duration) for ts_block in muxer.cache.buffer.values()])
+            pass
+            # f = self.q.get()
+            # ts_packet_list = self.muxer.muxe(f)
+            # self.muxer.write(ts_packet_list.payload)
+            # # print([(ts_block.name, ts_block.duration) for ts_block in self.muxer.cache.buffer.values()])
+            # self.q.task_done()
 
-    async def producter(self):
+    def producer(self):
+        print('producter')
         with h264.Parser(path='v_datas1.txt') as h264parser:
             f = h264parser.next_frame()
             while f:
-                ts_packet_list = self.muxer.muxe(f)
-                self.muxer.write(ts_packet_list.payload)
-                # print([(ts_block.name, ts_block.duration) for ts_block in self.muxer.cache.buffer.values()])
-                # await asyncio.sleep(0.5)
-                f = h264parser.next_frame()
+                pass
+                # self.q.put(f)
+                # await asyncio.sleep(0.1)
+                # time.sleep(1)
+                # f = h264parser.next_frame()
+
+    async def main(self):
+        asyncio.create_task(self.consumer())
+        print('cjf')
 
     def test_video_stream(self):
         loop = asyncio.get_event_loop()
-        res = loop.run_until_complete(asyncio.wait(
-            [self.producter(), self.consumer()]
-        ))
+        loop.run_until_complete(self.main())
         loop.close()

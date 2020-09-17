@@ -3,10 +3,11 @@ import subprocess
 from app.codec import h264
 import os
 from app.byte_ext import read64be, read32be
+from asyncio.streams import StreamReader, StreamWriter
+import time
+from app.container import ts
 
 META_HEADER_SIZE = 12
-START_CODE_SIZE = 4
-
 NO_PTS = -1
 
 ''' The video stream contains raw packets, without time information. When we
@@ -21,8 +22,8 @@ NO_PTS = -1
      It is followed by <packet_size> bytes containing the packet/frame.
 '''
 
-from asyncio.streams import StreamReader, StreamWriter
-async def handle_echo(reader, writer:StreamWriter):
+
+async def handle_echo(reader, writer: StreamWriter):
     with open('test_case/v_datas2.txt', 'w') as f:
         f.write('')
     while True:
@@ -37,9 +38,9 @@ async def handle_echo(reader, writer:StreamWriter):
         byte_buffer = await reader.read(packet_size)
         if byte_buffer is None or len(byte_buffer) < 3:
             continue
-        sc = byte_buffer[:START_CODE_SIZE]
-        nalu_header = byte_buffer[START_CODE_SIZE]
-        nalu_payload_buffer = byte_buffer[START_CODE_SIZE + 1:]
+        sc = byte_buffer[:h264.NALU_START_CODE_SIZE]
+        nalu_header = byte_buffer[h264.NALU_START_CODE_SIZE]
+        nalu_payload_buffer = byte_buffer[h264.NALU_START_CODE_SIZE + 1:]
         # if pts == NO_PTS or (pts & 0x8000000000000000) == 0 or packet_size <= 0:
         #     continue
         print('cjf pts/packet_size:', pts, packet_size)
@@ -65,6 +66,23 @@ async def handle_echo(reader, writer:StreamWriter):
             # await asyncio.sleep(2)
 
 
+from app.container import ts
+from app.codec import h264
+from app.http_ts import server
+import time
+import asyncio
+import threading
+
+
+def mock_data():
+    q = server.q
+    with h264.Parser(path='/Users/jf.chen/crawler/river/server4py/test_case/v_datas1.txt') as h264parser:
+        f = h264parser.next_frame()
+        while f:
+            q.put(f)
+            f = h264parser.next_frame()
+
+
 async def main():
     # meta_header_buffer = [0, 13024]
     # pts = read64be(meta_header_buffer)
@@ -82,4 +100,6 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # asyncio.run(main())
+    threading.Thread(target=mock_data).start()
+    server.main()

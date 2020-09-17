@@ -33,7 +33,7 @@ class Segment:
         self.cur_seq_num = int(filename.split('.')[1])
 
 
-def gen_live(m3u8_info):
+def gen_live(m3u8_info:M3u8):
     '''
         # EXTM3U
         # EXT-X-VERSION:3
@@ -51,7 +51,7 @@ def gen_live(m3u8_info):
             or m3u8_info.segments is None
             or len(m3u8_info.segments) == 0):
         return ''
-    seq_num = m3u8_info.segments[0].cur_seq_num
+    seq_num = m3u8_info.segments[-1].cur_seq_num
     d = m3u8_info.max_duration_per_segment
     m3u8_header = _gen_header_temple(True) % (VERSION, d, seq_num)
     return m3u8_header+_gen_body(m3u8_info.segments)

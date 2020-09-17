@@ -34,6 +34,8 @@ from asyncio.streams import StreamReader, StreamWriter
 import io
 import datetime
 import time
+from enum import Enum, unique
+from dataclasses import dataclass
 
 __crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
@@ -122,20 +124,19 @@ Packet_Type_AUDIO = 1
 Packet_Type_VIDEO = 2
 
 
+@dataclass
 class Header:
     timestamp: int = 0  # unit:millisecond
     packet_type = Packet_Type_UNKNOW
     packet_size = 0
 
 
+@dataclass
 class PacketList:
     def __init__(self, header: Header, payload: bytes) -> None:
         super().__init__()
         self.header = header
         self.payload = payload
-
-
-from enum import Enum, unique
 
 
 @unique
@@ -155,7 +156,7 @@ class Cache:
         else:
             return DiskCache()
 
-    def allocate_block(self, key):
+    def allocate_block(self, key, seqnum):
         raise NotImplementedError
 
     def write_to_block(self, b):
@@ -165,20 +166,23 @@ class Cache:
         raise NotImplementedError
 
 
+@dataclass
 class TSBlock:
     """
     ts data storage in memory
     """
-    duration: int = 0  # unit:second
+    duration: int = 0  # unit:millsecond
     name: str = ''
     b = bytearray()
+    seqnum = 0
 
 
+@dataclass
 class TSFile:
     """
     ts data storage in disk
     """
-    duration: int = 0  # unit:second
+    duration: int = 0  # unit:millsecond
     name: str = ''
     ts_file_path = ''
 
@@ -194,10 +198,11 @@ class MemCache(Cache):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def allocate_block(self, key):
+    def allocate_block(self, key, seqnum):
         self.cur_key = key
         tsfile = TSBlock()
         tsfile.name = key
+        tsfile.seqnum = seqnum
         self.buffer[self.cur_key] = tsfile
 
     def write_duration_to_eof(self, duration):
@@ -211,6 +216,10 @@ class MemCache(Cache):
             raise BaseException('key must be not empty')
         tsfile = self.buffer[self.cur_key]
         tsfile.b.extend(b)
+        if len(self.buffer) > 3:
+            for k in self.buffer.keys():
+                self.buffer.pop(k)
+                break
 
 
 class DiskCache(Cache):
@@ -222,7 +231,7 @@ class DiskCache(Cache):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.__writer.close()
 
-    def allocate_block(self, key):
+    def allocate_block(self, key, seqnum):
         self.cur_key = key
 
     def write_to_block(self, b):
@@ -235,13 +244,14 @@ class DiskCache(Cache):
         pass
 
 
-class Muxer():
+class Muxer:
     __VIDEO_PID = 0x100
     __AUDIO_PID = 0x101
     __PAT_PID = 0x000
     __VIDEO_SID = 0xe0
     __AUDIO_SID = 0xc0
     __PES_START_CODE = bytes([0x00, 0x00, 0x01])
+    __seqnum_count=0
 
     def __enter__(self):
         return self
@@ -249,7 +259,7 @@ class Muxer():
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def __init__(self, path_template: str = '%03d.ts', strategy: Strategy = Strategy.WRITE_TO_DISK) -> None:
+    def __init__(self, path_template: str = 'cjf.%03d.ts', strategy: Strategy = Strategy.WRITE_TO_DISK) -> None:
         super().__init__()
 
         self.__patCc = 0
@@ -259,7 +269,8 @@ class Muxer():
         self.path_template = path_template
         self.__base_time = 0
         self.cache = Cache.create(strategy)
-        self.cache.allocate_block(path_template % self.__j)
+        self.__seqnum_count +=1
+        self.cache.allocate_block(path_template % self.__j,self.__seqnum_count)
         # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
 
     def ts_pmt_packet(self, has_video: bool) -> bytes:
@@ -531,8 +542,8 @@ class Muxer():
         if delta >= max_duration and frame.header.is_keyframe():
             # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
             self.__j += 1
-            self.cache.write_duration_to_eof(int(delta / 1000))
-            self.cache.allocate_block(self.path_template % self.__j)
+            self.cache.write_duration_to_eof(delta)
+            self.cache.allocate_block(self.path_template % self.__j,self.__seqnum_count)
             self.__base_time = pts
             self.__is_first = True
 

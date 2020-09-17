@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Optional
 from asyncio.streams import StreamReader
@@ -101,6 +102,7 @@ PACKET_TYPE_AUDIO = 1
 PACKET_TYPE_VIDEO = 2
 
 
+@dataclass
 class Header:
     pts: int = 0  # unit:millisecond
     dts: int = 0
@@ -126,6 +128,7 @@ class Header:
         return self.type == PACKET_TYPE_VIDEO
 
 
+@dataclass
 class Frame:
     """
      type:I Frame, P Frame , B Frame
