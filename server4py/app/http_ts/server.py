@@ -5,6 +5,12 @@ from app.container import ts
 from app.codec import h264
 from app.http_ts import m3u8
 import queue
+import threading
+from app.container import ts
+from app.codec import h264
+from app.http_ts import server
+import time
+import asyncio
 
 
 # //localhost:8081/live/movie0.m3u8
@@ -99,18 +105,7 @@ async def cors_middleware(app, handler):
     return middleware_handler
 
 
-import threading
-from app.container import ts
-from app.codec import h264
-from app.http_ts import server
-import time
-import asyncio
-
-def main():
-    # asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    # loop = asyncio.get_event_loop()
-    # app = web.Application(middlewares=[cors_middleware])
-    # asyncio.create_task(consumer())
+def start_server():
     threading.Thread(target=consumer).start()
     app = web.Application()
     app.add_routes([web.get('/', handle_root),
@@ -120,9 +115,9 @@ def main():
     web.run_app(app, port=8081)
 
 
+def main():
+    start_server()
+
+
 if __name__ == '__main__':
-    # bug:RuntimeError: This event loop is already running
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(main())
-    # loop.close()
     main()

@@ -30,10 +30,6 @@ psi: pat pmt
 
 from app.data_type_ext import uint32, byte
 from app.byte_ext import copy
-from asyncio.streams import StreamReader, StreamWriter
-import io
-import datetime
-import time
 from enum import Enum, unique
 from dataclasses import dataclass
 
@@ -145,7 +141,7 @@ class Strategy(Enum):
     WRITE_TO_DISK = 1
 
 
-from singleton import Singleton
+from app.singleton import Singleton
 
 
 class Cache:

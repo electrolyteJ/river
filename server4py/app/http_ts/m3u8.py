@@ -1,5 +1,6 @@
 from urllib.parse import urlparse
 import os
+
 EXTM3U = '#EXTM3U'
 EXT_X_VERSION = '#EXT-X-VERSION'
 EXT_X_ALLOW_CACHE = '#EXT-X-ALLOW-CACHE'
@@ -7,8 +8,10 @@ EXT_X_TARGETDURATION = '#EXT-X-TARGETDURATION'
 EXT_X_MEDIA_SEQUENCE = '#EXT-X-MEDIA-SEQUENCE'
 EXTINF = '#EXTINF'
 VERSION = 3
+from dataclasses import dataclass
 
 
+@dataclass
 class M3u8:
     max_duration_per_segment = ''
     segments = list()
@@ -18,6 +21,7 @@ class M3u8:
         self.segments = segments
 
 
+@dataclass
 class Segment:
     cur_seq_num = -1
     duration = ''
@@ -33,7 +37,7 @@ class Segment:
         self.cur_seq_num = int(filename.split('.')[1])
 
 
-def gen_live(m3u8_info:M3u8):
+def gen_live(m3u8_info: M3u8):
     '''
         # EXTM3U
         # EXT-X-VERSION:3
@@ -54,7 +58,7 @@ def gen_live(m3u8_info:M3u8):
     seq_num = m3u8_info.segments[-1].cur_seq_num
     d = m3u8_info.max_duration_per_segment
     m3u8_header = _gen_header_temple(True) % (VERSION, d, seq_num)
-    return m3u8_header+_gen_body(m3u8_info.segments)
+    return m3u8_header + _gen_body(m3u8_info.segments)
 
 
 def gen_vod(m3u8_info):
@@ -71,27 +75,27 @@ def gen_vod(m3u8_info):
         # EXT-X-ENDLIST
     '''
     if (m3u8_info is None
-        or m3u8_info.segments is None
+            or m3u8_info.segments is None
             or len(m3u8_info.segments) == 0):
         return ''
     d = m3u8_info.max_duration_per_segment
     header = _gen_header_temple(False) % (VERSION, d)
     footer = '#EXT-X-ENDLIST'
     body = _gen_body(m3u8_info.segments)
-    return header+body+footer
+    return header + body + footer
 
 
 def _gen_body(segments):
     m3u8_body = ''
     for seg in segments:
-        m3u8_body = m3u8_body+'#EXTINF:%s,%s\n%s\n' % (seg.duration, seg.title, seg.resource)
+        m3u8_body = m3u8_body + '#EXTINF:%s,%s\n%s\n' % (seg.duration, seg.title, seg.resource)
     return m3u8_body
 
 
 def _gen_header_temple(islive):
     m3u8_temple = '#EXTM3U\n#EXT-X-VERSION:%d\n#EXT-X-ALLOW-CACHE:NO\n#EXT-X-TARGETDURATION:%s\n'
     if islive:
-        m3u8_temple = m3u8_temple+'#EXT-X-MEDIA-SEQUENCE:%d\n'
+        m3u8_temple = m3u8_temple + '#EXT-X-MEDIA-SEQUENCE:%d\n'
     else:
         pass
     return m3u8_temple
@@ -106,7 +110,7 @@ def main():
         Segment(10, 'cjf', 'https://priv.example.com/abc12.4.ts'),
         Segment(10, 'cjf', 'https://priv.example.com/abc12.5.ts'),
         Segment(10, 'cjf', 'https://priv.example.com/abc12.6.ts'),
-        ]
+    ]
     m3u8 = M3u8(15.3, segs)
     print('{:=^30}'.format('live m3u8'))
     m3u8_file = gen_live(m3u8)
