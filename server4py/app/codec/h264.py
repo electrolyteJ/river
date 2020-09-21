@@ -78,6 +78,11 @@ class FrameType(Enum):
     B = 0
     P = 2
     I = 3
+    Q = 1
+    W = 15
+    E = 23
+    R = 21
+    T = 24
     # SP = 3
     # SI = 4
     # P = 5

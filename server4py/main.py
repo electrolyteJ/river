@@ -20,5 +20,5 @@ if __name__ == '__main__':
     threading.Thread(target=localsocket_server.main).start()
     print('>>> start http-ts server slide', end='\n')
     print('\n', end='\n')
-    threading.Thread(target=http_ts_server.main).start()
+    # threading.Thread(target=http_ts_server.main).start()
     print('=' * 60, end='\n')

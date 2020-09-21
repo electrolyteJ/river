@@ -126,6 +126,7 @@ def start_server():
 def main():
     hls_server_loop = asyncio.new_event_loop()
     print('start_hls_server >>>> ', hls_server_loop.time(), end='\n')
+    print('http://0.0.0.0:9000/live/movie.m3u8')
     asyncio.set_event_loop(hls_server_loop)
     runner = start_server()
     hls_server_loop.run_until_complete(runner.setup())

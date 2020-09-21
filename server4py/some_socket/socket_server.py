@@ -47,12 +47,19 @@ print('Got connection from', addr)
 # a forever loop until we interrupt it or
 # an error occurs
 while True:
+    # java long:ff ff ff ff ff ff ff ff -2^63 ~ 2^63
+    # java int:00 00 00 20
     meta_header_buffer = c.recv(12)
-    print(meta_header_buffer.hex())
+
+    if meta_header_buffer is None or len(meta_header_buffer) == 0:
+        continue
+    print('meta_header_buffer', meta_header_buffer.hex())
     pts = read64be(meta_header_buffer)
     packet_size = read32be(meta_header_buffer[8:])
-    print('cjf:', pts, packet_size)
-    # byte_buffer = c.recv(packet_size)
+    print(pts, packet_size)
+    byte_buffer = c.recv(packet_size)
+    if byte_buffer is None or len(byte_buffer) < 3:
+        continue
     # print(hex(meta_header_buffer[0]), hex(meta_header_buffer[1]), hex(meta_header_buffer[2]), hex(meta_header_buffer[3]))
     # send a thank you message to the client.
     # c.send("Thank you for connecting".encode())

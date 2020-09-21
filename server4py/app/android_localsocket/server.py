@@ -1,4 +1,5 @@
-import subprocess, asyncio
+import subprocess
+import asyncio
 import asyncio
 import subprocess
 from app.byte_ext import read64be, read32be
@@ -92,7 +93,7 @@ async def start_server():
 
     subprocess.run('adb reverse --remove-all', shell=True)
     subprocess.run('adb reverse  localabstract:river tcp:27184', shell=True)
-    server = await asyncio.start_server(producer, '127.0.0.1', 27184)
+    server = await asyncio.start_server(handle_echo, '127.0.0.1', 27184)
     print(f'{server.sockets}')
     addr = server.sockets[0].getsockname()
     print(f'Serving on {addr}')
