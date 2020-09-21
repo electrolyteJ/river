@@ -10,17 +10,15 @@ from app.android_localsocket import server as localsocket_server
 import time
 import asyncio
 import threading
+from aiohttp import web
 
 if __name__ == '__main__':
-    print('=' * 60)
+    print('=' * 60, end='\n')
     print('\n')
-    print('>>> start local socket server slide')
+    print('>>> start local socket server slide', end='\n')
     print('\n')
-    # threading.Thread(target=localsocket_server.main).start()
-    subprocess.run('python3 /Users/hawks.jamesf/tech/crawler/river/server4py/app/android_localsocket/server.py',
-                   shell=True)
-    print('>>> start http-ts server slide')
-    print('\n')
-    # threading.Thread(target=http_ts_server.main).start()
-    subprocess.run('python3 /Users/hawks.jamesf/tech/crawler/river/server4py/app/http_ts/server.py', shell=True)
-    print('=' * 60)
+    threading.Thread(target=localsocket_server.main).start()
+    print('>>> start http-ts server slide', end='\n')
+    print('\n', end='\n')
+    threading.Thread(target=http_ts_server.main).start()
+    print('=' * 60, end='\n')

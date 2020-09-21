@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Optional
 from asyncio.streams import StreamReader
+from app.byte_ext import read64be, read32be
 
 '''
                      4bytes          1bytes              
@@ -140,12 +141,17 @@ class Frame:
         self.payload = payload
 
 
+META_HEADER_SIZE = 12
+
+
 class Parser:
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.__reader.close()
+        if not isinstance(self.__reader, StreamReader):
+            self.__reader.close()
 
     def __init__(self, path: str = None, sr: StreamReader = None) -> None:
         if path is None and sr is None or (path and sr):
@@ -154,8 +160,18 @@ class Parser:
 
         self.__reader = open(path, 'r') if path else sr
 
-        l0 = self.__reader.readline()
-        self.__sps_pps = self.__reader.readline().strip()
+    async def __get_header_frame(self, reader: StreamReader):
+        meta_header_buffer = await reader.read(META_HEADER_SIZE)
+        if meta_header_buffer is None or len(meta_header_buffer) == 0:
+            return None, None
+        # print('meta_header_buffer', meta_header_buffer.hex())
+        pts = read64be(meta_header_buffer)
+        packet_size = read32be(meta_header_buffer[8:])
+        byte_buffer = await reader.read(packet_size)
+        if byte_buffer is None or len(byte_buffer) < 3:
+            return None, None
+
+        return '%s\t%s' % (pts, packet_size), self.__array_to_string(byte_buffer)
 
     def __fill_data(self, buffer, rr):
         for e in rr:
@@ -189,11 +205,43 @@ class Parser:
         self.__fill_data(es, ret)
         return Frame(header, es)
 
-    def next_frame(self) -> Optional[Frame]:
+    async def has_first_frame(self) -> bool:
         reader = self.__reader
-        header = reader.readline()
-        frame = reader.readline()
-        if len(frame) != 0:
+        if isinstance(reader, StreamReader):
+            header, frame = await self.__get_header_frame(reader)
+
+        else:
+            header = reader.readline()
+            frame = reader.readline()
+
+        pts, packet_size = header.split('\t')
+        print('first_frame', pts, packet_size, frame)
+        if int(pts) == 18446744073709551615:
+            self.__sps_pps = frame
+            return True
+        return False
+
+    def __array_to_string(self, byte_buffer) -> str:
+        s = ''
+        for i in range(0, len(byte_buffer)):
+            p = byte_buffer[i]
+            if len(s) == 0:
+                s = hex(p)
+            else:
+                s = s + ',' + hex(p)
+        return s
+
+    async def next_frame(self) -> Optional[Frame]:
+        reader = self.__reader
+        if isinstance(reader, StreamReader):
+            header, frame = await self.__get_header_frame(reader)
+
+        else:
+            header = reader.readline()
+            frame = reader.readline()
+
+        # print('next_frame', header)
+        if frame and len(frame) != 0:
             ret = frame.strip().split(',')
             if self.__parse_frame_type(int(ret[4], base=16)) == FrameType.I:
                 frame = self.__sps_pps + ',' + frame

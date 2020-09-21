@@ -75,10 +75,24 @@ def mock_data():
             f = h264parser.next_frame()
 
 
+async def producer(reader: StreamReader, writer: StreamWriter):
+    q = http_ts_server.q
+    with h264.Parser(sr=reader) as h264parser:
+        ret = await h264parser.has_first_frame()
+        if not ret:
+            return
+        f = await h264parser.next_frame()
+        while f:
+            q.put(f)
+            f = await h264parser.next_frame()
+
+
 async def start_server():
+    # threading.Thread(target=mock_data).start()
+
     subprocess.run('adb reverse --remove-all', shell=True)
     subprocess.run('adb reverse  localabstract:river tcp:27184', shell=True)
-    server = await asyncio.start_server(handle_echo, '127.0.0.1', 27184)
+    server = await asyncio.start_server(producer, '127.0.0.1', 27184)
     print(f'{server.sockets}')
     addr = server.sockets[0].getsockname()
     print(f'Serving on {addr}')
@@ -92,5 +106,4 @@ def main():
 
 
 if __name__ == '__main__':
-    threading.Thread(target=mock_data).start()
     main()

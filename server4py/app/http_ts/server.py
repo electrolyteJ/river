@@ -30,7 +30,7 @@ def consumer():
         f = q.get()
         ts_packet_list = muxer.muxe(f)
         muxer.write(ts_packet_list.payload)
-        # print([(ts_block.name, ts_block.duration) for ts_block in muxer.cache.buffer.values()])
+        print([(ts_block.name, ts_block.duration) for ts_block in muxer.cache.buffer.values()])
         q.task_done()
 
 
@@ -66,8 +66,13 @@ async def handle_m3u8(request):
 async def handle_ts(request):
     ts_path = request.match_info["ts_path"]
     print('handle_ts', ts_path)
-    ts_block = muxer.cache.buffer.get(ts_path)
+    b = muxer.cache.buffer
+    if b is None or len(b) <= 1:
+        print('handle_ts buffer is reading')
+        return web.Response()
+    ts_block = b.pop(ts_path)
     if ts_block is None:
+        print('handle_ts ts_block is empty', )
         return web.Response()
     resp = web.StreamResponse(
         reason='OK',
@@ -107,16 +112,26 @@ async def cors_middleware(app, handler):
 
 def start_server():
     threading.Thread(target=consumer).start()
+
     app = web.Application()
     app.add_routes([web.get('/', handle_root),
                     web.get('/live/movie.m3u8', handle_m3u8),
                     web.get('/live/movie/{ts_path}', handle_ts),
                     ])
-    web.run_app(app, port=8081)
+    # web.run_app(app, port=9000)
+    runner = web.AppRunner(app)
+    return runner
 
 
 def main():
-    start_server()
+    hls_server_loop = asyncio.new_event_loop()
+    print('start_hls_server >>>> ', hls_server_loop.time(), end='\n')
+    asyncio.set_event_loop(hls_server_loop)
+    runner = start_server()
+    hls_server_loop.run_until_complete(runner.setup())
+    site = web.TCPSite(runner, '0.0.0.0', 9000)
+    hls_server_loop.run_until_complete(site.start())
+    hls_server_loop.run_forever()
 
 
 if __name__ == '__main__':
