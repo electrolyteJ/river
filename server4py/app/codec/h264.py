@@ -70,6 +70,25 @@ class NaluType(Enum):
     END_OF_SEQUENCE = 10
     END_Of_STREAM = 11
     FILLER_DATA = 12
+    SPSX = 13
+    PREFIX_NALU = 14
+    SUBSET_SPS = 15
+    DPS = 16
+    RESERVED_17 = 17
+    RESERVED_18 = 18
+    CODED_SLICE_19 = 19
+    CODED_SLICE_20 = 20
+    CODED_SLICE_21 = 21
+    RESERVED_22 = 22
+    RESERVED_23 = 23
+    UNSPECIFIED_24 = 24
+    UNSPECIFIED_25 = 25
+    UNSPECIFIED_26 = 26
+    UNSPECIFIED_27 = 27
+    UNSPECIFIED_28 = 28
+    UNSPECIFIED_29 = 29
+    UNSPECIFIED_30 = 30
+    UNSPECIFIED_31 = 31
 
 
 @unique
@@ -149,6 +168,14 @@ class Frame:
 META_HEADER_SIZE = 12
 
 
+def parse_nalu_type(b: int) -> NaluType:
+    return NaluType(b & 0x1f)
+
+
+def parse_frame_type(b: int) -> FrameType:
+    return FrameType((b & 0x60) >> 5)
+
+
 class Parser:
 
     def __enter__(self):
@@ -168,12 +195,14 @@ class Parser:
     async def __get_header_frame(self, reader: StreamReader):
         meta_header_buffer = await reader.read(META_HEADER_SIZE)
         if meta_header_buffer is None or len(meta_header_buffer) == 0:
+            print('__get_header_frame meta_header_buffer', meta_header_buffer)
             return None, None
         # print('meta_header_buffer', meta_header_buffer.hex())
         pts = read64be(meta_header_buffer)
         packet_size = read32be(meta_header_buffer[8:])
         byte_buffer = await reader.read(packet_size)
         if byte_buffer is None or len(byte_buffer) < 3:
+            print('__get_header_frame byte_buffer', byte_buffer)
             return None, None
 
         return '%s\t%s' % (pts, packet_size), self.__array_to_string(byte_buffer)
@@ -184,16 +213,10 @@ class Parser:
                 continue
             buffer.append(int(e.strip(), base=16))
 
-    def __parse_nalu_type(self, b: int) -> NaluType:
-        return NaluType(b & 0x1f)
-
-    def __parse_frame_type(self, b: int) -> FrameType:
-        return FrameType((b & 0x60) >> 5)
-
     def __parse_frame(self, metadata, p) -> Frame:
         ret = p.strip().split(',')
-        nt = self.__parse_nalu_type(int(ret[4], base=16))
-        ft = self.__parse_frame_type(int(ret[4], base=16))
+        nt = parse_nalu_type(int(ret[4], base=16))
+        ft = parse_frame_type(int(ret[4], base=16))
 
         header = Header()
         pts, packet_size = metadata.strip().split("\t")
@@ -248,8 +271,9 @@ class Parser:
         # print('next_frame', header)
         if frame and len(frame) != 0:
             ret = frame.strip().split(',')
-            if self.__parse_frame_type(int(ret[4], base=16)) == FrameType.I:
+            if parse_frame_type(int(ret[4], base=16)) == FrameType.I:
                 frame = self.__sps_pps + ',' + frame
             return self.__parse_frame(header, frame) if len(frame) != 0 else None
         else:
+            print('next_frame , frame is empty ', frame)
             return None

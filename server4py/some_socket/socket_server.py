@@ -53,7 +53,7 @@ while True:
 
     if meta_header_buffer is None or len(meta_header_buffer) == 0:
         continue
-    print('meta_header_buffer', meta_header_buffer.hex())
+    # print('meta_header_buffer', meta_header_buffer.hex())
     pts = read64be(meta_header_buffer)
     packet_size = read32be(meta_header_buffer[8:])
     print(pts, packet_size)

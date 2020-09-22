@@ -30,21 +30,29 @@ def consumer():
         f = q.get()
         ts_packet_list = muxer.muxe(f)
         muxer.write(ts_packet_list.payload)
-        print([(ts_block.name, ts_block.duration) for ts_block in muxer.cache.buffer.values()])
         q.task_done()
 
 
+MIN_SIZE = 2
+
+M3U8_DURATION = 7
+
+buffer = {}
+
+
 async def handle_m3u8(request):
+    print('>>>', 'handle_m3u8 start')
     segs = []
-    for ts_file in muxer.cache.buffer.values():
-        # segs.append(m3u8.Segment(ts_file.duration/1000, '', '/live/movie/%s' % ts_file.name))
-        segs.append(m3u8.Segment(7, '', '/live/movie/%s' % ts_file.name))
-    m = m3u8.M3u8(50, segs)
+    l = muxer.cache.get(2)
+    for ts_file in l:
+        buffer[ts_file.name] = ts_file
+        segs.append(m3u8.Segment(ts_file.duration if ts_file.duration <= M3U8_DURATION else M3U8_DURATION, '',
+                                 '/live/movie/%s' % ts_file.name))
+    m = m3u8.M3u8(M3U8_DURATION, segs)
     m3u8_file: str = m3u8.gen_live(m)
     # with open('movie0.m3u8', 'r') as f:
     #     m3u8_file = f.read()
-
-    print('handle_m3u8', m3u8_file)
+    print('>>>', 'handle_m3u8\n', m3u8_file)
     m3u8_bytes = m3u8_file.encode('utf-8')
     resp = web.StreamResponse(
         reason='OK',
@@ -65,14 +73,10 @@ async def handle_m3u8(request):
 
 async def handle_ts(request):
     ts_path = request.match_info["ts_path"]
-    print('handle_ts', ts_path)
-    b = muxer.cache.buffer
-    if b is None or len(b) <= 1:
-        print('handle_ts buffer is reading')
-        return web.Response()
-    ts_block = b.pop(ts_path)
+    print('>>>', 'handle_ts', ts_path)
+    ts_block = buffer.pop(ts_path)
     if ts_block is None:
-        print('handle_ts ts_block is empty', )
+        print('>>>', 'handle_ts ts_block is empty', )
         return web.Response()
     resp = web.StreamResponse(
         reason='OK',

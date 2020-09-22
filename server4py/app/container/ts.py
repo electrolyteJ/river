@@ -32,6 +32,7 @@ from app.data_type_ext import uint32, byte
 from app.byte_ext import copy
 from enum import Enum, unique
 from dataclasses import dataclass
+import queue
 
 __crcTable = [
     0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
@@ -163,30 +164,31 @@ class Cache:
 
 
 @dataclass
-class TSBlock:
+class TSFile:
     """
     ts data storage in memory
     """
     duration: int = 0  # unit:millsecond
     name: str = ''
-    b = bytearray()
+    b: bytearray = None
     seqnum = 0
 
 
-@dataclass
-class TSFile:
-    """
-    ts data storage in disk
-    """
-    duration: int = 0  # unit:millsecond
-    name: str = ''
-    ts_file_path = ''
+# @dataclass
+# class TSFile:
+#     """
+#     ts data storage in disk
+#     """
+#     duration: int = 0  # unit:millsecond
+#     name: str = ''
+#     ts_file_path = ''
+
+
+from copy import copy as clone
 
 
 class MemCache(Cache):
     __metaclass__ = Singleton
-    # buffer: dict(map=(str,bytearray)) = {}
-    buffer: dict = {}
 
     def __enter__(self):
         return self
@@ -194,28 +196,41 @@ class MemCache(Cache):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def allocate_block(self, key, seqnum):
-        self.cur_key = key
-        tsfile = TSBlock()
-        tsfile.name = key
-        tsfile.seqnum = seqnum
-        self.buffer[self.cur_key] = tsfile
+    __q = queue.Queue(maxsize=2)
+    __queue_count = 0
 
-    def write_duration_to_eof(self, duration):
-        if self.cur_key is None:
-            raise BaseException('key must be not empty')
-        tsfile = self.buffer[self.cur_key]
-        tsfile.duration = duration
+    def __init__(self) -> None:
+        super().__init__()
+
+    def allocate_block(self, key, seqnum):
+        pass
 
     def write_to_block(self, b):
-        if self.cur_key is None:
-            raise BaseException('key must be not empty')
-        tsfile = self.buffer[self.cur_key]
-        tsfile.b.extend(b)
-        if len(self.buffer) > 3:
-            for k in self.buffer.keys():
-                self.buffer.pop(k)
-                break
+        pass
+
+    def write_duration_to_eof(self, duration):
+        pass
+
+    def set(self, ts_file):
+        if ts_file is None:
+            return
+        self.__q.put(ts_file)
+        self.__queue_count += 1
+
+    def get(self, size):
+        print('handle_m3u8 get_from_queue method start')
+        l = []
+        # if self.__queue_count < 3:
+        #     return l
+        for i in range(0, size):
+            ts_file = self.__q.get()
+            print('ts_file:',ts_file.name)
+            self.__queue_count -= 1
+            if ts_file.duration / 1000 > 0:
+                l.append(ts_file)
+            self.__q.task_done()
+        print('handle_m3u8 get_from_queue method end')
+        return l
 
 
 class DiskCache(Cache):
@@ -247,7 +262,8 @@ class Muxer:
     __VIDEO_SID = 0xe0
     __AUDIO_SID = 0xc0
     __PES_START_CODE = bytes([0x00, 0x00, 0x01])
-    __seqnum_count=0
+    __seqnum_count = 1
+    __ts_file: TSFile
 
     def __enter__(self):
         return self
@@ -265,8 +281,7 @@ class Muxer:
         self.path_template = path_template
         self.__base_time = 0
         self.cache = Cache.create(strategy)
-        self.__seqnum_count +=1
-        self.cache.allocate_block(path_template % self.__j,self.__seqnum_count)
+        self.allocate_ts_file(self.path_template % self.__seqnum_count, self.__seqnum_count)
         # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
 
     def ts_pmt_packet(self, has_video: bool) -> bytes:
@@ -520,7 +535,17 @@ class Muxer:
 
     __is_first = True
     __i = 0
-    __j = 1
+
+    def allocate_ts_file(self, key, seqnum):
+        self.__ts_file = TSFile()
+        self.__ts_file.name = key
+        self.__ts_file.seqnum = seqnum
+        self.__ts_file.b = bytearray()
+
+    def write_to_ts_file(self, b):
+        if self.__ts_file is None:
+            raise BaseException('key must be not empty')
+        self.__ts_file.b.extend(b)
 
     def muxe(self, frame, max_duration=3000) -> PacketList:
         dts = frame.header.dts
@@ -536,10 +561,12 @@ class Muxer:
         payload = bytearray()
         delta = pts - self.__base_time
         if delta >= max_duration and frame.header.is_keyframe():
+            print('>>> it is i frame', self.__ts_file.name, delta)
             # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
-            self.__j += 1
-            self.cache.write_duration_to_eof(delta)
-            self.cache.allocate_block(self.path_template % self.__j,self.__seqnum_count)
+            self.__ts_file.duration = delta
+            self.cache.set(self.__ts_file)
+            self.__seqnum_count += 1
+            self.allocate_ts_file(self.path_template % self.__seqnum_count, self.__seqnum_count)
             self.__base_time = pts
             self.__is_first = True
 
@@ -563,5 +590,4 @@ class Muxer:
         return PacketList(h, payload)
 
     def write(self, ps):
-        with self.cache as c:
-            c.write_to_block(ps)
+        self.write_to_ts_file(ps)
