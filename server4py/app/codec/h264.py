@@ -244,7 +244,7 @@ class Parser:
 
         pts, packet_size = header.split('\t')
         print('first_frame', pts, packet_size, frame)
-        if int(pts) == 18446744073709551615:
+        if int(pts) == -1:
             self.__sps_pps = frame
             return True
         return False
