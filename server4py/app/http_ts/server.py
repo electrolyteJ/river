@@ -43,7 +43,7 @@ buffer = {}
 async def handle_m3u8(request):
     print('>>>', 'handle_m3u8 start')
     segs = []
-    l = muxer.cache.get(2)
+    l = muxer.cache.get(3)
     for ts_file in l:
         buffer[ts_file.name] = ts_file
         segs.append(m3u8.Segment(ts_file.duration if ts_file.duration <= M3U8_DURATION else M3U8_DURATION, '',
@@ -68,10 +68,12 @@ async def handle_m3u8(request):
     await resp.write(m3u8_bytes)
     # await resp.drain()  # switch point
     await resp.write_eof()
+    print('>>>', 'handle_m3u8 end')
     return resp
 
 
 async def handle_ts(request):
+    print('>>>', 'handle_ts start')
     ts_path = request.match_info["ts_path"]
     print('>>>', 'handle_ts', ts_path)
     ts_block = buffer.pop(ts_path)
@@ -88,6 +90,7 @@ async def handle_ts(request):
     await resp.write(ts_block.b)
     # await resp.drain()  # switch point
     await resp.write_eof()
+    print('>>>', 'handle_ts end')
     return resp
 
 
@@ -114,6 +117,9 @@ async def cors_middleware(app, handler):
     return middleware_handler
 
 
+port = 9000
+
+
 def start_server():
     threading.Thread(target=consumer).start()
 
@@ -127,14 +133,15 @@ def start_server():
     return runner
 
 
+# kill tcp process :sudo lsof -i tcp:9000
 def main():
     hls_server_loop = asyncio.new_event_loop()
     print('start_hls_server >>>> ', hls_server_loop.time(), end='\n')
-    print('http://0.0.0.0:9000/live/movie.m3u8')
+    print('http://0.0.0.0:%d/live/movie.m3u8' % port)
     asyncio.set_event_loop(hls_server_loop)
     runner = start_server()
     hls_server_loop.run_until_complete(runner.setup())
-    site = web.TCPSite(runner, '0.0.0.0', 9000)
+    site = web.TCPSite(runner, '0.0.0.0', port)
     hls_server_loop.run_until_complete(site.start())
     hls_server_loop.run_forever()
 

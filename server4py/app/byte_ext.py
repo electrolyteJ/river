@@ -17,7 +17,37 @@ def read32be(buf):
     return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]
 
 
+def read_int32(buf: bytes):
+    v = read32be(buf)
+    first = v >> 63
+    if first == 1:  # 负数
+        v = (v - 1) ^ 0xffffffff
+        return int(-v)
+    else:
+        return v
+
+
 def read64be(buf: bytes):
     msb = read32be(buf)
     lsb = read32be(buf[4:])
     return (msb << 32) | lsb
+
+
+def read_int64(buf: bytes):
+    msb = read32be(buf)
+    lsb = read32be(buf[4:])
+    v = (msb << 32) | lsb
+    first = v >> 63
+    if first == 1:  # 负数
+        v = (v - 1) ^ 0xffffffffffffffff
+        return int(-v)
+    else:
+        return v
+
+
+if __name__ == "__main__":
+    v = read_int64(bytes(b'\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00'))
+    print(
+        v,
+        type(v)
+    )

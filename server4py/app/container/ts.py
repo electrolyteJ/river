@@ -196,7 +196,7 @@ class MemCache(Cache):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    __q = queue.Queue(maxsize=2)
+    __q = queue.Queue()
     __queue_count = 0
 
     def __init__(self) -> None:
@@ -224,7 +224,7 @@ class MemCache(Cache):
         #     return l
         for i in range(0, size):
             ts_file = self.__q.get()
-            print('ts_file:',ts_file.name)
+            print('ts_file:',ts_file.name,ts_file.duration)
             self.__queue_count -= 1
             if ts_file.duration / 1000 > 0:
                 l.append(ts_file)

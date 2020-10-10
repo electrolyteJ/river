@@ -28,7 +28,7 @@ async def handle_echo(reader: StreamReader, writer: StreamWriter):
     with open('test_case/v_datas2.txt', 'w') as f:
         f.write('')
     while True:
-        # java long:ff ff ff ff ff ff ff ff -2^63 ~ 2^63
+        # java long:ff ff ff ff ff ff ff ff -2^63 ~ 2^63  0x7ffffffffffffffe
         # java int:00 00 00 20
         meta_header_buffer = await reader.read(META_HEADER_SIZE)
         if meta_header_buffer is None or len(meta_header_buffer) == 0:
@@ -90,7 +90,7 @@ async def producer(reader: StreamReader, writer: StreamWriter):
             q.put(f)
             f = await h264parser.next_frame()
         else:
-            remain =await reader.read()
+            remain = await reader.read()
             print('producer stop ', remain)
 
 
