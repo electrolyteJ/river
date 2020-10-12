@@ -34,6 +34,21 @@ def read64be(buf: bytes):
 
 
 def read_int64(buf: bytes):
+    '''
+    java long 存储有符号数据
+    encoding:-1，求补码
+    1.1的二进制数
+     0x00 00 00 00 00 00 00 01
+    2. 取其反码
+     0xff ff ff ff ff ff ff fe
+    3. 反码+1
+     0xff ff ff ff ff ff ff ff  18446744073709551615
+
+     decoding
+     1.判读第一位是1,说明是补码，是负数
+     2. -1获取反码
+     3. 取反
+    '''
     msb = read32be(buf)
     lsb = read32be(buf[4:])
     v = (msb << 32) | lsb
@@ -43,6 +58,8 @@ def read_int64(buf: bytes):
         return int(-v)
     else:
         return v
+    # if pow(-2, 63) <= n <= pow(2, 63) - 1:
+#     print('cad')
 
 
 if __name__ == "__main__":
