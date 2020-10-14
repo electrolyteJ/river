@@ -220,7 +220,7 @@ class MemCache(Cache):
         #     return l
         for i in range(0, size):
             ts_file = self.__q.get()
-            print('ts_file:', ts_file.name, ts_file.duration)
+            print('ts_file:', ts_file.name, ts_file.duration/1000)
             self.__queue_count -= 1
             if ts_file.duration / 1000 > 0:
                 l.append(ts_file)
