@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Optional
 from asyncio.streams import StreamReader
-from app.byte_ext import read64be, read32be
+from app.byte_ext import read_int64, read32be
 
 '''
                      4bytes          1bytes              
@@ -93,6 +93,9 @@ class NaluType(Enum):
 
 @unique
 class FrameType(Enum):
+    '''
+    H264采用的核心算法是帧内压缩和帧间压缩，帧内压缩是生成I帧的算法，帧间压缩是生成B帧和P帧的算法
+    '''
     UNKNOWN = -1
     B = 0
     P = 2
@@ -198,7 +201,7 @@ class Parser:
             print('__get_header_frame meta_header_buffer', meta_header_buffer)
             return None, None
         # print('meta_header_buffer', meta_header_buffer.hex())
-        pts = read64be(meta_header_buffer)
+        pts = read_int64(meta_header_buffer)
         packet_size = read32be(meta_header_buffer[8:])
         byte_buffer = await reader.read(packet_size)
         if byte_buffer is None or len(byte_buffer) < 3:

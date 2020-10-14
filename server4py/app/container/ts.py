@@ -28,6 +28,8 @@ psi: pat pmt
 
 """
 
+from copy import copy as clone
+from app.singleton import Singleton
 from app.data_type_ext import uint32, byte
 from app.byte_ext import copy
 from enum import Enum, unique
@@ -142,9 +144,6 @@ class Strategy(Enum):
     WRITE_TO_DISK = 1
 
 
-from app.singleton import Singleton
-
-
 class Cache:
     @staticmethod
     def create(s):
@@ -184,9 +183,6 @@ class TSFile:
 #     ts_file_path = ''
 
 
-from copy import copy as clone
-
-
 class MemCache(Cache):
     __metaclass__ = Singleton
 
@@ -224,7 +220,7 @@ class MemCache(Cache):
         #     return l
         for i in range(0, size):
             ts_file = self.__q.get()
-            print('ts_file:',ts_file.name,ts_file.duration)
+            print('ts_file:', ts_file.name, ts_file.duration)
             self.__queue_count -= 1
             if ts_file.duration / 1000 > 0:
                 l.append(ts_file)
@@ -264,6 +260,8 @@ class Muxer:
     __PES_START_CODE = bytes([0x00, 0x00, 0x01])
     __seqnum_count = 1
     __ts_file: TSFile
+    __cur_keyframe=None
+    __is_first = True
 
     def __enter__(self):
         return self
@@ -533,7 +531,7 @@ class Muxer:
             is_first_packet = False
         return ts_pes_packets_size, ts_packets
 
-    __is_first = True
+
     __i = 0
 
     def allocate_ts_file(self, key, seqnum):
@@ -548,6 +546,8 @@ class Muxer:
         self.__ts_file.b.extend(b)
 
     def muxe(self, frame, max_duration=3000) -> PacketList:
+        if frame.header.is_keyframe():
+            self.__cur_keyframe = frame
         dts = frame.header.dts
         pts = frame.header.pts
         dts_timescale = dts * 90  # unit:timescale
@@ -561,7 +561,7 @@ class Muxer:
         payload = bytearray()
         delta = pts - self.__base_time
         if delta >= max_duration and frame.header.is_keyframe():
-            print('>>> it is i frame', self.__ts_file.name, delta)
+            print('>>> it is i frame', self.__ts_file.name, delta/1000)
             # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
             self.__ts_file.duration = delta
             self.cache.set(self.__ts_file)
@@ -569,8 +569,6 @@ class Muxer:
             self.allocate_ts_file(self.path_template % self.__seqnum_count, self.__seqnum_count)
             self.__base_time = pts
             self.__is_first = True
-
-        # if frame.header.is_keyframe():
         # PAT表和PMT表需要定期插入ts流，因为用户随时可能加入ts流,这个间隔比较小，通常每隔几个视频帧就要加入PAT和PMT
         if self.__is_first:
             payload.extend(self.ts_pat_packet())
