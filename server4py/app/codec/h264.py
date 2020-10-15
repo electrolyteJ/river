@@ -3,7 +3,6 @@ from enum import Enum, unique
 from typing import Optional
 from asyncio.streams import StreamReader
 from app.byte_ext import read_int64, read32be
-
 '''
                      4bytes          1bytes              
   +-+-+-+-+-+-+    +-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -274,7 +273,9 @@ class Parser:
         # print('next_frame', header)
         if frame and len(frame) != 0:
             ret = frame.strip().split(',')
-            if parse_frame_type(int(ret[4], base=16)) == FrameType.I:
+            pft=parse_frame_type(int(ret[4], base=16))
+            if pft == FrameType.I:
+                print(header, 'i frame type')
                 frame = self.__sps_pps + ',' + frame
             return self.__parse_frame(header, frame) if len(frame) != 0 else None
         else:
