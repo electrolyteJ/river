@@ -22,9 +22,9 @@ river is live project which include push stream side , process stream side , pul
 ### Web Front End Side
 - [x] http-ts/HLS:`http://0.0.0.0:9000/live/movie.m3u8` 
 
-- [ ] http-flv:http://0.0.0.0:9000/live/movie.flv
+- [ ] http-flv:`http://0.0.0.0:9000/live/movie.flv`
 
-- [ ] rtmp:http://0.0.0.0:9000/live/movie
+- [ ] rtmp:`http://0.0.0.0:9000/live/movie`
 
 ## Get Start
 
