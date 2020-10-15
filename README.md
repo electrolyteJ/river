@@ -1,4 +1,4 @@
-river is live project which include push stream side , process stream side , pull stream side。
+river is live stream project which include push stream side , process stream side , pull stream side。
 
 ### Mobile Side
 - [x] Desktop
