@@ -46,7 +46,7 @@ async def handle_m3u8(request):
     l = muxer.cache.get(3)
     for ts_file in l:
         buffer[ts_file.name] = ts_file
-        segs.append(m3u8.Segment(ts_file.duration if ts_file.duration <= M3U8_DURATION else M3U8_DURATION, '',
+        segs.append(m3u8.Segment(ts_file.duration/1000 if ts_file.duration/1000 <= M3U8_DURATION else M3U8_DURATION, '',
                                  '/live/movie/%s' % ts_file.name))
     m = m3u8.M3u8(M3U8_DURATION, segs)
     m3u8_file: str = m3u8.gen_live(m)

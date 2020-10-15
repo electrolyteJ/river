@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Optional
 from asyncio.streams import StreamReader
-from app.byte_ext import read_int64, read32be
+from app.byte_ext import read_int64, read32be, read_int32
 '''
                      4bytes          1bytes              
   +-+-+-+-+-+-+    +-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -194,15 +194,26 @@ class Parser:
 
         self.__reader = open(path, 'r') if path else sr
 
+    async def read(self,reader, packet_size):
+        remaining = packet_size
+        buffer = bytearray()
+        while remaining > 0:
+            b = await reader.read(remaining)
+            remaining -= len(b)
+            buffer.extend(b)
+        return buffer
+
     async def __get_header_frame(self, reader: StreamReader):
         meta_header_buffer = await reader.read(META_HEADER_SIZE)
         if meta_header_buffer is None or len(meta_header_buffer) == 0:
             print('__get_header_frame meta_header_buffer', meta_header_buffer)
             return None, None
-        # print('meta_header_buffer', meta_header_buffer.hex())
         pts = read_int64(meta_header_buffer)
         packet_size = read32be(meta_header_buffer[8:])
-        byte_buffer = await reader.read(packet_size)
+        byte_buffer = await self.read(reader, packet_size)
+        pft = parse_frame_type(byte_buffer[4])
+        if pft == FrameType.I:
+            print('>>>it is i frame', pts, packet_size, meta_header_buffer.hex())
         if byte_buffer is None or len(byte_buffer) < 3:
             print('__get_header_frame byte_buffer', byte_buffer)
             return None, None
@@ -275,7 +286,6 @@ class Parser:
             ret = frame.strip().split(',')
             pft=parse_frame_type(int(ret[4], base=16))
             if pft == FrameType.I:
-                print(header, 'i frame type')
                 frame = self.__sps_pps + ',' + frame
             return self.__parse_frame(header, frame) if len(frame) != 0 else None
         else:
