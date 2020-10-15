@@ -1,32 +1,30 @@
-> hi river
-river 是一个从移动端推流，web后端处理流，web前端拉流的项目。
+river is live project which include push stream side , process stream side , pull stream side。
 
-### 移动端流源头
+### Mobile Side
+- [x] Desktop
 
--[x] 桌面
+- [ ] Video window
 
--[ ] 视频
+### Web Back End Side
 
-### web后端流处理
+#### Push Stream Server
+- [x] h264 codec + local socket protocol
 
-#### 推流端服务
--[x] h264 codec + local socket protocol
+- [ ] h264 codec + flv container + rtmp protocol
 
--[ ] h264 codec + flv container + rtmp protocol
+#### Pull Stream Server
+- [x] h264 codec + ts container + http-ts protocol
 
-#### 拉流端服务
--[x] h264 codec + ts container + http-ts protocol
+- [ ] h264 codec + flv container + http-flv protocol
 
--[ ] h264 codec + flv container + http-flv protocol
+- [ ] h264 codec + flv container + rtmp protocol
 
--[ ] h264 codec + flv container + rtmp protocol
+### Web Front End Side
+- [x] http-ts/HLS:`http://0.0.0.0:9000/live/movie.m3u8` 
 
-### web前端流拉取
--[x] http-ts/HLS:`http://0.0.0.0:9000/live/movie.m3u8` 
+- [ ] http-flv:http://0.0.0.0:9000/live/movie.flv
 
--[ ] http-flv:http://0.0.0.0:9000/live/movie.flv
-
--[ ] rtmp:http://0.0.0.0:9000/live/movie
+- [ ] rtmp:http://0.0.0.0:9000/live/movie
 
 ## Get Start
 
