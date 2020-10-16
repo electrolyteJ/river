@@ -561,7 +561,7 @@ class Muxer:
         payload = bytearray()
         delta = pts - self.__base_time
         if delta >= max_duration and frame.header.is_keyframe():
-            print('>>> it is \u001B[31mfirst\u001B[0m i frame', self.__ts_file.name, '\u001B[31m%s\u001B[0m ' % (delta/1000))
+            print('>>>生成ts文件','ts file:\u001B[31m%s\u001B[0m duration:\u001B[31m%s\u001B[0m' % (self.__ts_file.name, (delta/1000)))
             # self.__writer = open(self.path % time.time(), 'ab') if self.path else self.sw
             self.__ts_file.duration = delta
             self.cache.set(self.__ts_file)

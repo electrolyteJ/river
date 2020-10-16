@@ -75,8 +75,8 @@ async def handle_m3u8(request):
 async def handle_ts(request):
     print('>>>', 'handle_ts start')
     ts_path = request.match_info["ts_path"]
-    print('>>>', 'handle_ts', ts_path)
     ts_block = buffer.pop(ts_path)
+    print('>>> handle_ts', ts_path, 'remaind buffer length:', len(buffer))
     if ts_block is None:
         print('>>>', 'handle_ts ts_block is empty', )
         return web.Response()

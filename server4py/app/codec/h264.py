@@ -214,6 +214,10 @@ class Parser:
         pft = parse_frame_type(byte_buffer[4])
         if pft == FrameType.I:
             print('>>>it is i frame', pts, packet_size, meta_header_buffer.hex())
+        else:
+            # print('>>>it is %s frame' % pft.name, pts, packet_size, meta_header_buffer.hex())
+            pass
+
         if byte_buffer is None or len(byte_buffer) < 3:
             print('__get_header_frame byte_buffer', byte_buffer)
             return None, None
