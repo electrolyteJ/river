@@ -258,7 +258,8 @@ class Parser:
         else:
             header = reader.readline()
             frame = reader.readline()
-
+        if header is None:
+            return False
         pts, packet_size = header.split('\t')
         print('first_frame', pts, packet_size, frame)
         if int(pts) == -1:
