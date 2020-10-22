@@ -3,7 +3,7 @@ River is live stream project which include push stream side , process stream sid
 ### Mobile Side
 - [x] Desktop
 
-- [ ] Video window
+- [ ] Camera
 
 ### Web Back End Side
 
