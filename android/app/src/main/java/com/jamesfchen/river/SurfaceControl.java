@@ -6,7 +6,6 @@ import android.os.Build;
 import android.os.IBinder;
 import android.view.Surface;
 
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
