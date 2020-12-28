@@ -1,4 +1,4 @@
-
+import sys
 #求最简质因数
 def cacl(a, b):
     for i in range(2, 10):
@@ -15,10 +15,10 @@ nums = [
     (424, 240), (320, 240),(0,0),
 ]
 if __name__ == "__main__":
-    for n in nums:
-        h, w = n
-        if h  == 0 and w==0:
-            print('='*20)
-        else:
-            print(cacl(h, w))
-            
+    # for n in nums:
+    #     h, w = n
+    #     if h  == 0 and w==0:
+    #         print('='*20)
+    #     else:
+    #         print(cacl(h, w))
+    print(sys.maxsize)

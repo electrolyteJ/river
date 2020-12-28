@@ -30,8 +30,8 @@ psi: pat pmt
 
 from copy import copy as clone
 from app.singleton import Singleton
-from app.data_type_ext import uint32, byte
-from app.byte_ext import copy
+from app.data_type_ext import uint32, ubyte
+from app.buffer_ext import copy
 from enum import Enum, unique
 from dataclasses import dataclass
 import queue
@@ -336,7 +336,7 @@ class Muxer:
         crc32Value = gen_crc32(pmt[ts_header_size:ts_header_size + pmt_header_size + prog_info_size])
         for i in range(0, 4):
             bytes_size = 8 * (3 - i)
-            ret = byte(crc32Value >> bytes_size)
+            ret = ubyte(crc32Value >> bytes_size)
             pmt[i + ts_header_size + pmt_header_size + prog_info_size] = ret
         # print('patCc:', __patCc, len(pmt))
         return pmt
@@ -381,7 +381,7 @@ class Muxer:
         # 4bytes的crc32 ,验证ts包的完整性
         for i in range(0, 4):
             bytes_size = 8 * (3 - i)
-            ret = byte(crc32Value >> bytes_size)
+            ret = ubyte(crc32Value >> bytes_size)
             pat[i + pat_header_size + ts_header_size] = ret
         # print('patCc:', __patCc, len(pat))
         return pat
@@ -391,13 +391,13 @@ class Muxer:
         if value > 0x1ffffffff:
             value -= 0x1ffffffff
         n = uint32(flag << 4) | ((uint32(value >> 30) & 0x07) << 1) | 1
-        buffer.insert(start, byte(n))
+        buffer.insert(start, ubyte(n))
         n = ((uint32(value >> 15) & 0x7fff) << 1) | 1
-        buffer.insert(start + 1, byte(n >> 8))
-        buffer.insert(start + 2, byte(n))
+        buffer.insert(start + 1, ubyte(n >> 8))
+        buffer.insert(start + 2, ubyte(n))
         n = (uint32(value & 0x7fff) << 1) | 1
-        buffer.insert(start + 3, byte(n >> 8))
-        buffer.insert(start + 4, byte(n))
+        buffer.insert(start + 3, ubyte(n >> 8))
+        buffer.insert(start + 4, ubyte(n))
 
     def __gen_pes_header(self, payload_size: int, is_video, pts, dts):
         pes_header = bytearray()
@@ -414,8 +414,8 @@ class Muxer:
         remain_packet_size = payload_size + remain_header_size + 3
         if remain_packet_size > 0xffff:
             remain_packet_size = 0
-        pes_header.insert(4, byte(remain_packet_size >> 8))
-        pes_header.insert(5, byte(remain_packet_size))
+        pes_header.insert(4, ubyte(remain_packet_size >> 8))
+        pes_header.insert(5, ubyte(remain_packet_size))
         pes_header.insert(6, 0x80)
         pes_header.insert(7, flag)
         pes_header.insert(8, remain_header_size)
@@ -463,11 +463,11 @@ class Muxer:
                 pid = self.__VIDEO_PID
             # ts header
             ts_packet[0] = 0x47  # sync byte
-            ts_packet[1] = byte(pid >> 8)  # pid high 5 bits
+            ts_packet[1] = ubyte(pid >> 8)  # pid high 5 bits
             if is_first_packet:
                 # unit start indicator 负载单元起始标示符，一个完整的数据包开始时标记为1
                 ts_packet[1] = 0x40 | ts_packet[1]
-            ts_packet[2] = byte(pid)  # pid low 8 bits
+            ts_packet[2] = ubyte(pid)  # pid low 8 bits
             if is_video:
                 self.__videoCc = self.__videoCc + 1
                 if self.__videoCc > 0xf:
@@ -488,11 +488,11 @@ class Muxer:
                 ts_packet[4] = 7
                 ts_packet[5] = 0x50
                 pcr = dts  # 节目时钟参考
-                ts_packet[6] = byte(pcr >> 25)
-                ts_packet[7] = byte((pcr >> 17) & 0xff)
-                ts_packet[8] = byte((pcr >> 9) & 0xff)
-                ts_packet[9] = byte((pcr >> 1) & 0xff)
-                ts_packet[10] = byte(((pcr & 0x1) << 7) | 0x7e)
+                ts_packet[6] = ubyte(pcr >> 25)
+                ts_packet[7] = ubyte((pcr >> 17) & 0xff)
+                ts_packet[8] = ubyte((pcr >> 9) & 0xff)
+                ts_packet[9] = ubyte((pcr >> 1) & 0xff)
+                ts_packet[10] = ubyte(((pcr & 0x1) << 7) | 0x7e)
                 ts_packet[11] = 0x00  # payload_unit_start_indicator=1 会添加一个0x00表示负载起始
                 ts_packet_index = 12
                 # adaptation_field_size = 8
@@ -502,7 +502,7 @@ class Muxer:
             if should_fill_0xff_size > 0:
                 ts_packet[3] |= 0x20  # adaptation_field_control:‘10’为仅含自适应域，无有效负载
                 # adaptation field
-                ts_packet[ts_packet_index] = byte(should_fill_0xff_size - 1)
+                ts_packet[ts_packet_index] = ubyte(should_fill_0xff_size - 1)
                 if should_fill_0xff_size != 1:
                     ts_packet[ts_packet_index + 1] = 0x00
                 ts_packet_index += should_fill_0xff_size

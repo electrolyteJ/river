@@ -2,7 +2,7 @@ import subprocess
 import asyncio
 import asyncio
 import subprocess
-from app.byte_ext import read_int64, read32be
+from app.buffer_ext import read_int64, read_uint32
 from asyncio.streams import StreamReader, StreamWriter
 from app.codec import h264
 import threading
@@ -35,7 +35,7 @@ async def handle_echo(reader: StreamReader, writer: StreamWriter):
             continue
         # print('meta_header_buffer', meta_header_buffer.hex())
         pts = read_int64(meta_header_buffer)
-        packet_size = read32be(meta_header_buffer[8:])
+        packet_size = read_uint32(meta_header_buffer[8:])
         byte_buffer = await reader.read(packet_size)
         if byte_buffer is None or len(byte_buffer) < 3:
             continue

@@ -4,18 +4,13 @@ import subprocess
 
 import time
 
-
-def read16be(buf):
-    return (buf[0] << 8) | buf[1]
-
-
-def read32be(buf):
+def read_int32(buf):
     return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]
 
 
-def read64be(buf):
-    msb = read32be(buf)
-    lsb = read32be(buf[4:])
+def read_uint64(buf):
+    msb = read_int32(buf)
+    lsb = read_int32(buf[4:])
     return (msb << 32) | lsb
 
 
@@ -54,8 +49,8 @@ while True:
     if meta_header_buffer is None or len(meta_header_buffer) == 0:
         continue
     # print('meta_header_buffer', meta_header_buffer.hex())
-    pts = read64be(meta_header_buffer)
-    packet_size = read32be(meta_header_buffer[8:])
+    pts = read_uint64(meta_header_buffer)
+    packet_size = read_int32(meta_header_buffer[8:])
     print(pts, packet_size)
     byte_buffer = c.recv(packet_size)
     if byte_buffer is None or len(byte_buffer) < 3:

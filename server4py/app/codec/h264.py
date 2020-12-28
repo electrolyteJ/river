@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Optional
 from asyncio.streams import StreamReader
-from app.byte_ext import read_int64, read32be, read_int32
+from app.buffer_ext import read_int64, read_uint32, read_int32
 '''
                      4bytes          1bytes              
   +-+-+-+-+-+-+    +-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -209,7 +209,7 @@ class Parser:
             print('__get_header_frame meta_header_buffer', meta_header_buffer)
             return None, None
         pts = read_int64(meta_header_buffer)
-        packet_size = read32be(meta_header_buffer[8:])
+        packet_size = read_uint32(meta_header_buffer[8:])
         byte_buffer = await self.read(reader, packet_size)
         pft = parse_frame_type(byte_buffer[4])
         if pft == FrameType.I:

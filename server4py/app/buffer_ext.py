@@ -9,16 +9,16 @@ def copy(src: bytes, dest: bytearray, offset: int = 0):
         dest[offset + i] = src[i]
 
 
-def read16be(buf):
+def read_uint16(buf: bytes):
     return (buf[0] << 8) | buf[1]
 
 
-def read32be(buf):
+def read_uint32(buf: bytes):
     return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]
 
 
 def read_int32(buf: bytes):
-    v = read32be(buf)
+    v = read_uint32(buf)
     first = v >> 63
     if first == 1:  # 负数
         v = (v - 1) ^ 0xffffffff
@@ -27,9 +27,9 @@ def read_int32(buf: bytes):
         return v
 
 
-def read64be(buf: bytes):
-    msb = read32be(buf)
-    lsb = read32be(buf[4:])
+def read_uint64(buf: bytes):
+    msb = read_uint32(buf)
+    lsb = read_uint32(buf[4:])
     return (msb << 32) | lsb
 
 
@@ -49,8 +49,8 @@ def read_int64(buf: bytes):
      2. -1获取反码
      3. 取反
     '''
-    msb = read32be(buf)
-    lsb = read32be(buf[4:])
+    msb = read_uint32(buf)
+    lsb = read_uint32(buf[4:])
     v = (msb << 32) | lsb
     first = v >> 63
     if first == 1:  # 负数
@@ -58,8 +58,6 @@ def read_int64(buf: bytes):
         return int(-v)
     else:
         return v
-    # if pow(-2, 63) <= n <= pow(2, 63) - 1:
-#     print('cad')
 
 
 if __name__ == "__main__":
