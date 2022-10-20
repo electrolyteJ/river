@@ -1,6 +1,8 @@
 
 
 ```bash
+Local表示电脑，Remote表示手机，adb forward 电脑 手机，表示将电脑端口数据转发到手机端口，adb reverse 手机 电脑，表示将手机端口数据转发到电脑端口
+
 networking:
  connect HOST[:PORT]      connect to a device via TCP/IP [default port=5555]
  disconnect [HOST[:PORT]]
