@@ -32,9 +32,8 @@ River is live stream project which include push stream side , process stream sid
 |---|---|---|
 [install SpacecraftAndroid app](https://github.com/Spacecraft-Plan/SpacecraftAndroid/)|start server: `python main.py`|listening url: `http://0.0.0.0:9000/live/movie.m3u8` 
 
-## Contribution
-
-
+## debug server
+stream server : aiohttp sqlalchemy asyncio
 ```bash
 Local表示电脑，Remote表示手机，adb forward 电脑 手机，表示将电脑端口数据转发到手机端口，adb reverse 手机 电脑，表示将手机端口数据转发到电脑端口
 
@@ -69,7 +68,6 @@ networking:
  reverse --remove-all     remove all reverse socket connections from device
 ```
 
-## debug server
 ```
 adb forward tcp:5005 tcp:5005
 
@@ -81,9 +79,9 @@ In Android Studio, _Run_ > _Debug_ > _Edit configurations..._ On the left, click
 
 ```
 
+## references
+
 [hls](https://tools.ietf.org/html/rfc8216)
-## stream server
-aiohttp sqlalchemy asyncio
 
 
 
